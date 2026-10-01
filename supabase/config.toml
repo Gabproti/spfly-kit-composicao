@@ -1,0 +1,5 @@
+project_id = "spfly-kits"
+[functions.admin-users]
+# A função valida o token pelo Auth antes de usar o cliente administrativo.
+# Compatível com tokens das chaves de assinatura atuais.
+verify_jwt = false
