@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { LockKeyhole, Eye, EyeOff, PackageCheck } from "lucide-react";
 import { db } from "../lib/supabase";
+import Brand from "../components/Brand";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,10 +31,7 @@ export default function Login() {
   return (
     <div className="login-layout">
       <section className="login-intro">
-        <div className="brand">
-          SP<span>FLY</span>
-          <small>KITS / OPERAÇÃO</small>
-        </div>
+        <Brand />
         <div className="intro-content">
           <div className="intro-symbol">
             <PackageCheck size={58} />
