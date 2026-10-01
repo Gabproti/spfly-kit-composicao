@@ -6,7 +6,7 @@ V1 em React, TypeScript, Vite e Supabase, para tablets e desktop. Não usa Fireb
 
 Implementados: login/logout, perfis admin/operator, painel, produtos e componentes com imagem e ativação, editor transacional de composição, administração de usuários, consulta de kit com foto, nova consulta e histórico com filtros/paginação.
 
-O código compila localmente. O banco e suas permissões são testados em PostgreSQL local via PGlite. O endereço e a chave pública do Supabase foram configurados no ambiente local, e o serviço Auth respondeu à verificação de conexão. O código está sendo versionado no repositório privado informado pelo proprietário. **A migração ainda precisa ser aplicada ao projeto real do Supabase; a Edge Function precisa ser publicada. A integração completa e o administrador inicial dependem do acesso administrativo ao projeto.** Não há usuários ou senhas pré-configurados e nenhum dado de produção foi alterado.
+O código compila localmente e os 13 testes SQL passaram em PostgreSQL local via PGlite. O código foi enviado ao repositório privado informado pelo proprietário. A migração, as policies RLS e o bucket privado foram aplicados ao projeto Supabase zhkxasnyqpccabaharas. A Edge Function admin-users foi publicada com validação explícita do token e origens autorizadas. Chamadas anônimas às cinco tabelas e chamadas sem token ou com token inválido à função foram bloqueadas com HTTP 401. Login por e-mail está habilitado; cadastro público e login anônimo estão desabilitados. O usuário gabriel.ferreira@spfly.com.br foi criado pelo proprietário e seu perfil foi confirmado como admin ativo. **Os testes integrados autenticados ainda estão pendentes do primeiro login.** Não há senha padrão nem dados de demonstração inseridos.
 
 ## 1. Estrutura
 
@@ -135,7 +135,9 @@ A migração cria o bucket `product-images` **privado**, com limite de 5 MB e MI
 
 ## 8. GitHub e hospedagem
 
-Repositório informado: https://github.com/Gabproti/spfly-kit-composicao
+Repositório: https://github.com/Gabproti/spfly-kit-composicao (código enviado à branch main).
+
+Prévia publicada: https://spfly-kits-gabproti.cco-centro-d-3498.chatgpt.site . A hospedagem atual é privada e exige entrada pela conta ChatGPT do proprietário antes do login do sistema. Acesso dos operadores fora dessa conta ainda precisa de uma configuração de hospedagem autorizada pelo proprietário.
 
 Antes de enviar, autentique o GitHub por Git Credential Manager, GitHub CLI (`gh auth login`) ou pelo conector GitHub. Não inclua tokens em URLs nem no código. Se o repositório já tiver arquivos, clone-o e preserve esses arquivos antes de incorporar o projeto. Não use force push.
 
@@ -153,8 +155,8 @@ Para hospedagem estática com Vite, configure instalação `pnpm install --froze
 
 ## 9. Checklist de teste integrado
 
-- [ ] Configurar Supabase, aplicar migração e publicar admin-users.
-- [ ] Criar primeiro admin no Auth e executar bootstrap com e-mail real.
+- [x] Configurar Supabase, aplicar migração e publicar admin-users.
+- [x] Criar primeiro admin no Auth e executar bootstrap com e-mail real.
 - [ ] Login inválido apresenta mensagem amigável; logout encerra a sessão.
 - [ ] Admin vê as seis seções administrativas e a consulta.
 - [ ] Cadastrar produto 123 com foto; editar, inativar e ativar.
@@ -176,7 +178,7 @@ Para hospedagem estática com Vite, configure instalação `pnpm install --froze
 
 ## 10. Validação e limites
 
-Os testes executam a migração SQL real em PGlite com roles anon/authenticated, um schema Auth/Storage mínimo e identidades simuladas. Cobrem RLS, rollback, duplicação, quantidades, consultas, histórico e acesso a arquivos. Isso valida a lógica SQL; não substitui os testes no Auth, Storage e Edge Functions do Supabase hospedado nem ensaios de concorrência reais. A conexão pública com o Auth foi validada; as operações integradas de login, Storage e Edge Functions continuam pendentes de configuração no painel do projeto.
+Os testes executam a migração SQL real em PGlite com roles anon/authenticated, um schema Auth/Storage mínimo e identidades simuladas. Cobrem RLS, rollback, duplicação, quantidades, consultas, histórico e acesso a arquivos. Isso valida a lógica SQL; não substitui os testes no Auth, Storage e Edge Functions do Supabase hospedado nem ensaios de concorrência reais. A conexão com o Auth e a recusa de chamadas não autenticadas na API e na Edge Function foram validadas no projeto hospedado. A conta inicial está ativa. Os testes autenticados de login, Storage e criação de usuários continuam pendentes do primeiro login.
 
 Não há dados de demonstração misturados com produção. `seed.example.sql` é opcional e serve apenas para testar a composição de exemplo; cadastre uma foto real do produto para conferência física. A arquitetura recebe código textual e Enter, permitindo futura integração com leitores que emulam teclado, sem adicionar uma função de leitura não solicitada.
 
