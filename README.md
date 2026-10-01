@@ -6,7 +6,7 @@ V1 em React, TypeScript, Vite e Supabase, para tablets e desktop. Não usa Fireb
 
 Implementados: login/logout, perfis admin/operator, painel, produtos e componentes com imagem e ativação, editor transacional de composição, administração de usuários, consulta de kit com foto, nova consulta e histórico com filtros/paginação.
 
-O código compila localmente e os 13 testes SQL passaram em PostgreSQL local via PGlite. O código foi enviado ao repositório privado informado pelo proprietário. A migração, as policies RLS e o bucket privado foram aplicados ao projeto Supabase zhkxasnyqpccabaharas. A Edge Function admin-users foi publicada com validação explícita do token e origens autorizadas. Chamadas anônimas às cinco tabelas e chamadas sem token ou com token inválido à função foram bloqueadas com HTTP 401. Login por e-mail está habilitado; cadastro público e login anônimo estão desabilitados. O usuário gabriel.ferreira@spfly.com.br foi criado pelo proprietário e seu perfil foi confirmado como admin ativo. O proprietário confirmou o primeiro login e a presença do menu Importações. **Os testes integrados de gravação, fotos e criação de operadores ainda estão pendentes de um lote real.** Não há senha padrão nem dados de demonstração inseridos.
+O código compila localmente e os 13 testes SQL passaram em PostgreSQL local via PGlite. O código foi enviado ao repositório informado pelo proprietário, que autorizou torná-lo público para usar GitHub Pages. A migração, as policies RLS e o bucket privado foram aplicados ao projeto Supabase zhkxasnyqpccabaharas. A Edge Function admin-users foi publicada com validação explícita do token e origens autorizadas. Chamadas anônimas às cinco tabelas e chamadas sem token ou com token inválido à função foram bloqueadas com HTTP 401. Login por e-mail está habilitado; cadastro público e login anônimo estão desabilitados. O usuário gabriel.ferreira@spfly.com.br foi criado pelo proprietário e seu perfil foi confirmado como admin ativo. O proprietário confirmou o primeiro login e a presença do menu Importações. **Os testes integrados de gravação, fotos e criação de operadores ainda estão pendentes de um lote real.** Não há senha padrão nem dados de demonstração inseridos.
 
 ## 1. Estrutura
 
@@ -137,7 +137,7 @@ A migração cria o bucket `product-images` **privado**, com limite de 5 MB e MI
 
 Repositório: https://github.com/Gabproti/spfly-kit-composicao (código enviado à branch main).
 
-Prévia publicada: https://spfly-kits-gabproti.cco-centro-d-3498.chatgpt.site . A hospedagem atual é privada e exige entrada pela conta ChatGPT do proprietário antes do login do sistema. Acesso dos operadores fora dessa conta ainda precisa de uma configuração de hospedagem autorizada pelo proprietário.
+Endereço do GitHub Pages: https://gabproti.github.io/spfly-kit-composicao/ . O workflow .github/workflows/pages.yml testa, compila e publica a branch main. A página de login é pública; somente contas com perfil ativo conseguem acessar dados e fotos no Supabase. Cadastre cada pessoa em Usuários antes de compartilhar o acesso. A origem https://gabproti.github.io foi autorizada em ALLOWED_ORIGINS; Site URL e retorno permitido do Auth apontam para o endereço acima. A prévia privada anterior em Sites foi substituída por essa publicação para uso entre máquinas.
 
 Antes de enviar, autentique o GitHub por Git Credential Manager, GitHub CLI (`gh auth login`) ou pelo conector GitHub. Não inclua tokens em URLs nem no código. Se o repositório já tiver arquivos, clone-o e preserve esses arquivos antes de incorporar o projeto. Não use force push.
 
@@ -190,7 +190,7 @@ A área **Importações** está disponível apenas para administradores. Ela usa
 
 Cabeçalhos: produtos `codigo, descricao, ativo`; componentes `codigo, tipo, descricao, ativo`; composições `codigo_produto, codigo_componente, quantidade`. O campo ativo aceita sim/não, true/false, 1/0 ou ativo/inativo. Fórmulas em XLSX são rejeitadas; converta-as em valores antes de importar.
 
-Validação da atualização: compilação passou e 18 testes passaram, incluindo CSV com BOM/acentos/aspas, preservação de zeros, duplicidades, quantidades, tipos e leitura de Excel. O envio autenticado de dados/fotos ainda precisa ser validado com um lote real fornecido pelo proprietário. A atualização de importações está na versão local e no código; a publicação privada anterior precisa ser atualizada antes de oferecer essa tela pelo endereço hospedado.
+Validação da atualização: compilação passou e 18 testes passaram, incluindo CSV com BOM/acentos/aspas, preservação de zeros, duplicidades, quantidades, tipos e leitura de Excel. O envio autenticado de dados/fotos ainda precisa ser validado com um lote real fornecido pelo proprietário. A publicação pelo GitHub Pages inclui a área de importações. O workflow utiliza somente URL e chave pública do Supabase; credenciais secretas permanecem no servidor.
 
 ## 10. Validação e limites
 
