@@ -1326,3 +1326,31 @@ tr:last-child td {
     transition: none !important;
   }
 }
+
+.import-panel {
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.import-panel > p {
+  line-height: 1.6;
+  color: var(--muted);
+}
+.import-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 20px 0;
+  line-height: 1.6;
+}
+.import-choice input {
+  width: 20px;
+  min-height: 20px;
+  margin-top: 3px;
+}
+.import-panel .toolbar {
+  padding: 16px 0;
+  flex-wrap: wrap;
+}
+.import-panel .toolbar label select {
+  margin-left: 10px;
+}

@@ -9,6 +9,7 @@ import {
   Search,
   Settings,
   Users,
+  FileUp,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { configured, db, fail, supabase } from "./lib/supabase";
@@ -20,6 +21,7 @@ import Compositions from "./pages/Compositions";
 import UserManagement from "./pages/Users";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
+import Imports from "./pages/Imports";
 const nav = [
   { id: "dashboard", label: "Início", icon: LayoutDashboard },
   { id: "products", label: "Produtos", icon: Package },
@@ -27,6 +29,7 @@ const nav = [
   { id: "compositions", label: "Composições", icon: ClipboardList },
   { id: "users", label: "Usuários", icon: Users },
   { id: "history", label: "Histórico", icon: HistoryIcon },
+  { id: "imports", label: "Importações", icon: FileUp },
   { id: "consult", label: "Consulta de kit", icon: Search },
 ];
 export default function App() {
@@ -35,6 +38,7 @@ export default function App() {
   const [loading, setLoading] = useState(configured);
   const [error, setError] = useState("");
   const [page, setPage] = useState("dashboard");
+  const [importing, setImporting] = useState(false);
   const loadProfile = useCallback(async (userId: string) => {
     const { data, error } = await db()
       .from("profiles")
@@ -161,6 +165,7 @@ export default function App() {
                 key={item.id}
                 className={page === item.id ? "nav-item selected" : "nav-item"}
                 onClick={() => setPage(item.id)}
+                disabled={importing}
               >
                 <item.icon size={21} />
                 <span>{item.label}</span>
@@ -192,7 +197,11 @@ export default function App() {
           )}
           <div className="header-actions">
             <span>{admin ? "Área administrativa" : profile.name}</span>
-            <button className="secondary small" onClick={logout}>
+            <button
+              className="secondary small"
+              onClick={logout}
+              disabled={importing}
+            >
               <LogOut size={18} /> Sair
             </button>
           </div>
@@ -215,6 +224,8 @@ export default function App() {
             <Compositions />
           ) : page === "users" ? (
             <UserManagement currentUser={profile.id} />
+          ) : page === "imports" ? (
+            <Imports onBusy={setImporting} />
           ) : (
             <History />
           )}
