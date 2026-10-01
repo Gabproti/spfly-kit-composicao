@@ -6,7 +6,7 @@ V1 em React, TypeScript, Vite e Supabase, para tablets e desktop. Não usa Fireb
 
 Implementados: login/logout, perfis admin/operator, painel, produtos e componentes com imagem e ativação, editor transacional de composição, administração de usuários, consulta de kit com foto, nova consulta e histórico com filtros/paginação.
 
-O código compila localmente e os 13 testes SQL passaram em PostgreSQL local via PGlite. O código foi enviado ao repositório privado informado pelo proprietário. A migração, as policies RLS e o bucket privado foram aplicados ao projeto Supabase zhkxasnyqpccabaharas. A Edge Function admin-users foi publicada com validação explícita do token e origens autorizadas. Chamadas anônimas às cinco tabelas e chamadas sem token ou com token inválido à função foram bloqueadas com HTTP 401. Login por e-mail está habilitado; cadastro público e login anônimo estão desabilitados. O usuário gabriel.ferreira@spfly.com.br foi criado pelo proprietário e seu perfil foi confirmado como admin ativo. **Os testes integrados autenticados ainda estão pendentes do primeiro login.** Não há senha padrão nem dados de demonstração inseridos.
+O código compila localmente e os 13 testes SQL passaram em PostgreSQL local via PGlite. O código foi enviado ao repositório privado informado pelo proprietário. A migração, as policies RLS e o bucket privado foram aplicados ao projeto Supabase zhkxasnyqpccabaharas. A Edge Function admin-users foi publicada com validação explícita do token e origens autorizadas. Chamadas anônimas às cinco tabelas e chamadas sem token ou com token inválido à função foram bloqueadas com HTTP 401. Login por e-mail está habilitado; cadastro público e login anônimo estão desabilitados. O usuário gabriel.ferreira@spfly.com.br foi criado pelo proprietário e seu perfil foi confirmado como admin ativo. O proprietário confirmou o primeiro login e a presença do menu Importações. **Os testes integrados de gravação, fotos e criação de operadores ainda estão pendentes de um lote real.** Não há senha padrão nem dados de demonstração inseridos.
 
 ## 1. Estrutura
 
@@ -176,9 +176,25 @@ Para hospedagem estática com Vite, configure instalação `pnpm install --froze
 - [ ] Cadastro de usuário pela Edge Function sem token/com operator recebe 401/403.
 - [ ] Verificar toque, tabulação, mensagens e ausência de rolagem horizontal de página em tablet 768×1024 e desktop.
 
+## Importação de dados e fotos
+
+A área **Importações** está disponível apenas para administradores. Ela usa as permissões RLS existentes, sem chaves de serviço no navegador e sem nova migração.
+
+1. Selecione Produtos, Componentes ou Composições e baixe o modelo Excel na tela.
+2. Preencha os códigos como texto, preservando zeros à esquerda. Use a primeira aba do Excel (.xlsx) ou CSV UTF-8 com cabeçalho, até 10 MB e 5.000 linhas.
+3. Importe produtos e componentes antes das composições. Confira a prévia; erros e duplicidades precisam ser corrigidos antes da gravação.
+4. Confirme a importação. Por padrão, códigos já cadastrados são ignorados; marque a opção de atualização para alterar descrição, tipo e status. Fotos são preservadas. Status vazio mantém o cadastro existente e cria registros novos ativos.
+5. Para composições, cada linha informa codigo_produto, codigo_componente e quantidade inteira de 1 a 9999. A confirmação explícita substitui toda a composição dos produtos presentes; a ordem das linhas determina a apresentação dos itens. Componentes inativos são bloqueados.
+6. Para fotos, selecione vários arquivos JPG/PNG/WebP (até 5 MB cada, máximo 500 por lote). O nome sem extensão deve corresponder ao código exato: 00123.jpg para 00123. Fotos sem produto correspondente, com formato inválido ou código duplicado no lote são ignoradas e aparecem no relatório. Fotos existentes só são substituídas quando essa opção é marcada. Arquivos antigos permanecem privados, sujeitos à política de remoção de órfãos.
+7. Baixe o relatório CSV com o resultado de todas as linhas ou fotos. A prévia mostra as primeiras 100 entradas. Cada cadastro/foto é gravado separadamente e cada composição é salva em transação própria; uma falha não desfaz gravações anteriores. A tela permite tentar novamente somente as entradas com falha. Não feche a página durante o processamento.
+
+Cabeçalhos: produtos `codigo, descricao, ativo`; componentes `codigo, tipo, descricao, ativo`; composições `codigo_produto, codigo_componente, quantidade`. O campo ativo aceita sim/não, true/false, 1/0 ou ativo/inativo. Fórmulas em XLSX são rejeitadas; converta-as em valores antes de importar.
+
+Validação da atualização: compilação passou e 18 testes passaram, incluindo CSV com BOM/acentos/aspas, preservação de zeros, duplicidades, quantidades, tipos e leitura de Excel. O envio autenticado de dados/fotos ainda precisa ser validado com um lote real fornecido pelo proprietário. A atualização de importações está na versão local e no código; a publicação privada anterior precisa ser atualizada antes de oferecer essa tela pelo endereço hospedado.
+
 ## 10. Validação e limites
 
-Os testes executam a migração SQL real em PGlite com roles anon/authenticated, um schema Auth/Storage mínimo e identidades simuladas. Cobrem RLS, rollback, duplicação, quantidades, consultas, histórico e acesso a arquivos. Isso valida a lógica SQL; não substitui os testes no Auth, Storage e Edge Functions do Supabase hospedado nem ensaios de concorrência reais. A conexão com o Auth e a recusa de chamadas não autenticadas na API e na Edge Function foram validadas no projeto hospedado. A conta inicial está ativa. Os testes autenticados de login, Storage e criação de usuários continuam pendentes do primeiro login.
+Os testes executam a migração SQL real em PGlite com roles anon/authenticated, um schema Auth/Storage mínimo e identidades simuladas. Cobrem RLS, rollback, duplicação, quantidades, consultas, histórico e acesso a arquivos. Isso valida a lógica SQL; não substitui os testes no Auth, Storage e Edge Functions do Supabase hospedado nem ensaios de concorrência reais. A conexão com o Auth e a recusa de chamadas não autenticadas na API e na Edge Function foram validadas no projeto hospedado. A conta inicial está ativa. O proprietário confirmou o login e o menu administrativo. Os testes autenticados de Storage e criação de usuários continuam pendentes.
 
 Não há dados de demonstração misturados com produção. `seed.example.sql` é opcional e serve apenas para testar a composição de exemplo; cadastre uma foto real do produto para conferência física. A arquitetura recebe código textual e Enter, permitindo futura integração com leitores que emulam teclado, sem adicionar uma função de leitura não solicitada.
 
