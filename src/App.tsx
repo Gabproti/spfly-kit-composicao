@@ -22,6 +22,7 @@ import UserManagement from "./pages/Users";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
 import Imports from "./pages/Imports";
+import Brand from "./components/Brand";
 const nav = [
   { id: "dashboard", label: "Início", icon: LayoutDashboard },
   { id: "products", label: "Produtos", icon: Package },
@@ -110,10 +111,7 @@ export default function App() {
   if (!configured)
     return (
       <div className="setup">
-        <div className="brand dark">
-          SP<span>FLY</span>
-          <small>KITS / OPERAÇÃO</small>
-        </div>
+        <Brand dark />
         <Settings size={40} />
         <h1>Conecte o sistema ao Supabase</h1>
         <p>
@@ -154,10 +152,7 @@ export default function App() {
     <div className={admin ? "app-shell" : "app-shell operator"}>
       {admin && (
         <aside className="sidebar">
-          <div className="brand">
-            SP<span>FLY</span>
-            <small>KITS / OPERAÇÃO</small>
-          </div>
+          <Brand />
           <div className="menu-label">GESTÃO</div>
           <nav>
             {nav.map((item) => (
@@ -190,10 +185,7 @@ export default function App() {
               SPFLY <span>/</span> {nav.find((n) => n.id === page)?.label}
             </span>
           ) : (
-            <div className="brand compact">
-              SP<span>FLY</span>
-              <small>OPERAÇÃO</small>
-            </div>
+            <Brand compact dark />
           )}
           <div className="header-actions">
             <span>{admin ? "Área administrativa" : profile.name}</span>

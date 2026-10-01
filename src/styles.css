@@ -178,6 +178,32 @@ button svg {
 .brand.dark {
   color: var(--dark);
 }
+.official-brand img {
+  display: block;
+  width: 100%;
+  max-width: 270px;
+  height: auto;
+  object-fit: contain;
+}
+.official-brand.dark {
+  background: var(--dark);
+  padding: 12px 18px;
+  border-radius: 8px;
+  width: fit-content;
+}
+.official-brand.compact {
+  align-items: center;
+}
+.official-brand.compact img {
+  width: 145px;
+}
+.official-brand.compact small {
+  margin-top: 0;
+}
+.setup .official-brand {
+  margin-left: auto;
+  margin-right: auto;
+}
 .eyebrow {
   font-weight: 700;
   font-size: 0.73rem;
