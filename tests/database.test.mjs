@@ -289,5 +289,147 @@ test("Fluxo de kits e segurança RLS em PostgreSQL local", async (t) => {
     r = await as(operator, () => pg.query("select * from public.products"));
     assert.equal(r.rows.length, 0);
   });
+  await pg.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202610070001_kit_import.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await pg.query("update public.products set active=true where id=$1", [
+    product,
+  ]);
+  await t.test(
+    "Importação incremental preserva quantidade, ordem e dados do cadastro",
+    async () => {
+      await as(admin, () =>
+        pg.query("select public.save_composition($1,$2::jsonb)", [
+          product,
+          JSON.stringify([{ component_id: component, quantity: 7 }]),
+        ]),
+      );
+      const before = await pg.query(
+        "select * from public.products order by id",
+      );
+      const batch = [
+        { product: " 00123 ", component: " 0001 " },
+        { product: "00123", component: "0002" },
+        { product: "00123", component: "0002" },
+        { product: "ausente", component: "0001" },
+        { product: "00123", component: "ausente" },
+        { product: "", component: "0001" },
+      ];
+      const r = await as(admin, () =>
+        pg.query("select public.import_kit_links($1::jsonb) as result", [
+          JSON.stringify(batch),
+        ]),
+      );
+      assert.deepEqual(
+        r.rows[0].result.map((row) => row.status),
+        [
+          "existing",
+          "inserted",
+          "duplicate",
+          "product_missing",
+          "component_missing",
+          "invalid",
+        ],
+      );
+      const stored = await pg.query(
+        "select component_id,quantity,position from public.compositions where product_id=$1 order by position",
+        [product],
+      );
+      assert.deepEqual(stored.rows, [
+        { component_id: component, quantity: 7, position: 0 },
+        { component_id: idleComponent, quantity: 1, position: 1 },
+      ]);
+      const again = await as(admin, () =>
+        pg.query("select public.import_kit_links($1::jsonb) as result", [
+          JSON.stringify(batch),
+        ]),
+      );
+      assert.equal(
+        again.rows[0].result.filter((row) => row.status === "inserted").length,
+        0,
+      );
+      assert.deepEqual(
+        (await pg.query("select * from public.products order by id")).rows,
+        before.rows,
+      );
+    },
+  );
+  await t.test(
+    "Importação rejeita operador, inativo e anônimo, inclusive chamadas diretas",
+    async () => {
+      for (const id of [operator, disabled, null])
+        await assert.rejects(
+          as(id, () =>
+            pg.query("select public.import_kit_links($1::jsonb)", ["[]"]),
+          ),
+        );
+      await assert.rejects(
+        as(admin, () =>
+          pg.query("select public.import_kit_links($1::jsonb)", [
+            JSON.stringify(
+              Array(1001).fill({ product: "00123", component: "0001" }),
+            ),
+          ]),
+        ),
+      );
+    },
+  );
+  await t.test(
+    "Cadastro desativado após prévia é rejeitado no servidor",
+    async () => {
+      await pg.query("update public.components set active=false where id=$1", [
+        idleComponent,
+      ]);
+      const r = await as(admin, () =>
+        pg.query("select public.import_kit_links($1::jsonb) as result", [
+          JSON.stringify([{ product: "00123", component: "0002" }]),
+        ]),
+      );
+      assert.equal(r.rows[0].result[0].status, "inactive");
+      await pg.query(
+        "update public.components set active=true,image_url='component.webp' where id=$1",
+        [idleComponent],
+      );
+      const kit = await as(operator, () =>
+        pg.query("select public.consult_kit('00123') as kit"),
+      );
+      assert.equal(kit.rows[0].kit.items.length, 2);
+      assert.equal(
+        kit.rows[0].kit.items.find((item) => item.code === "0002").image_url,
+        "component.webp",
+      );
+    },
+  );
+  await t.test(
+    "Importação e consulta suportam mais de 300 componentes",
+    async () => {
+      await pg.exec(
+        "insert into public.components(code,type,description) select 'LARGE-'||n,'Outros','Volume '||n from generate_series(1,350) n",
+      );
+      const payload = Array.from({ length: 350 }, (_, n) => ({
+        product: "00123",
+        component: `LARGE-${n + 1}`,
+      }));
+      const r = await as(admin, () =>
+        pg.query("select public.import_kit_links($1::jsonb) as result", [
+          JSON.stringify(payload),
+        ]),
+      );
+      assert.equal(
+        r.rows[0].result.filter((row) => row.status === "inserted").length,
+        350,
+      );
+      const kit = await as(operator, () =>
+        pg.query("select public.consult_kit('00123') as kit"),
+      );
+      assert.equal(kit.rows[0].kit.items.length, 352);
+    },
+  );
   await pg.close();
 });
