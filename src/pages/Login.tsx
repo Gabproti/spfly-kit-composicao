@@ -3,7 +3,8 @@ import type { FormEvent } from "react";
 import { LockKeyhole, Eye, EyeOff, PackageCheck } from "lucide-react";
 import { db } from "../lib/supabase";
 import Brand from "../components/Brand";
-export default function Login() {
+import { connectionMessage, withTimeout } from "../lib/connection";
+export default function Login({ sessionError = "" }: { sessionError?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
@@ -14,16 +15,20 @@ export default function Login() {
     setBusy(true);
     setError("");
     try {
-      const { error } = await db().auth.signInWithPassword({
+      const { error } = await withTimeout(db().auth.signInWithPassword({
         email: email.trim(),
         password,
-      });
+      }), 20000);
       if (error)
         setError(
-          "Não foi possível entrar. Confira seu e-mail e senha ou tente novamente.",
+          error.code === "invalid_credentials"
+            ? "E-mail ou senha incorretos. Confira seus dados e tente novamente."
+            : error.code === "email_not_confirmed"
+              ? "Seu e-mail ainda não foi confirmado. Procure o administrador."
+              : connectionMessage,
         );
     } catch {
-      setError("Não foi possível conectar. Verifique sua conexão.");
+      setError(connectionMessage);
     } finally {
       setBusy(false);
     }
@@ -56,9 +61,9 @@ export default function Login() {
           </span>
           <h2>Bem-vindo à operação</h2>
           <p>Entre com seu acesso para continuar.</p>
-          {error && (
+          {(error || sessionError) && (
             <div className="notice error" role="alert">
-              {error}
+              {error || sessionError}
             </div>
           )}
           <label>
