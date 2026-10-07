@@ -32,7 +32,7 @@ export function validateRows(
   if (new Set(headers).size !== headers.length)
     throw new Error("Existem cabeçalhos repetidos.");
   const required = columns[kind].filter(
-    (c) => c !== "ativo" && c !== "descricao",
+    (c) => c !== "ativo" && c !== "descricao" && c !== "tipo",
   );
   if (required.some((c) => !headers.includes(c)))
     throw new Error(`Colunas obrigatórias: ${required.join(", ")}.`);
@@ -77,11 +77,14 @@ export function validateRows(
         if ((r.values.descricao ?? "").length > 300)
           throw new Error("Descrição deve ter até 300 caracteres.");
         activeValue(r.values.ativo ?? "");
-        if (kind === "components") {
+        if (kind === "components" && r.values.tipo) {
           const type = types.find(
             (t) => normalizeHeader(t) === normalizeHeader(r.values.tipo),
           );
-          if (!type) throw new Error("Tipo de componente inválido.");
+          if (!type)
+            throw new Error(
+              "Tipo não cadastrado. Cadastre-o em Tipos de componentes ou deixe a célula em branco.",
+            );
           r.values.tipo = type;
         }
       }

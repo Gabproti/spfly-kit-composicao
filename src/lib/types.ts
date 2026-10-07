@@ -14,7 +14,7 @@ export type Product = {
   image_url: string | null;
   active: boolean;
 };
-export type Component = Product & { type: string };
+export type Component = Product & { type: string | null };
 export type CompositionItem = {
   component_id: string;
   quantity: number;
@@ -25,7 +25,7 @@ export type Kit = {
   items: {
     code: string;
     image_url: string | null;
-    type: string;
+    type: string | null;
     description: string;
     quantity: number;
   }[];
@@ -38,13 +38,3 @@ export type History = {
   products: { description: string } | null;
   profiles: { name: string; email: string } | null;
 };
-export const componentTypes = [
-  "Relógio",
-  "Caixa",
-  "Fecho",
-  "Laço",
-  "Embalagem",
-  "Manual",
-  "Acessório",
-  "Outros",
-];
