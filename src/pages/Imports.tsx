@@ -17,6 +17,7 @@ import {
   readImportFile,
 } from "../lib/importFiles";
 import { uploadPhoto } from "../components/UI";
+import KitImport from "../components/KitImport";
 type Row = CheckedRow & { existing?: Product; result?: string; done?: boolean };
 type Photo = {
   file: File;
@@ -57,12 +58,7 @@ export default function Imports({
   const [filename, setFilename] = useState("");
   const [update, setUpdate] = useState(false);
   const [replacePhotos, setReplacePhotos] = useState(false);
-  const [replaceComposition, setReplaceComposition] = useState(false);
   const [progress, setProgress] = useState("");
-  const [productIds, setProductIds] = useState<Map<string, string>>(new Map());
-  const [componentIds, setComponentIds] = useState<Map<string, string>>(
-    new Map(),
-  );
   useEffect(() => {
     onBusy(busy);
     return () => onBusy(false);
@@ -90,28 +86,7 @@ export default function Imports({
       );
       if (!checked.length)
         throw new Error("Inclua os dados abaixo do cabeçalho.");
-      if (kind === "compositions") {
-        const [p, c] = await Promise.all([
-          catalog("products"),
-          catalog("components"),
-        ]);
-        setProductIds(new Map(p.map((r) => [r.code, r.id])));
-        setComponentIds(new Map(c.map((r) => [r.code, r.id])));
-        setRows(
-          checked.map((r) => ({
-            ...r,
-            error:
-              r.error ||
-              (!p.some((x) => x.code === r.values.codigo_produto)
-                ? "Produto não cadastrado."
-                : !c.some(
-                      (x) => x.code === r.values.codigo_componente && x.active,
-                    )
-                  ? "Componente não cadastrado ou inativo."
-                  : ""),
-          })),
-        );
-      } else {
+      if (kind !== "compositions") {
         const stored = await catalog(kind);
         const byCode = new Map(stored.map((r) => [r.code, r]));
         setRows(
@@ -131,29 +106,7 @@ export default function Imports({
     setNotice("");
     const results = rows.map((r) => ({ ...r }));
     try {
-      if (kind === "compositions") {
-        const codes = [
-          ...new Set(
-            results.filter((r) => !r.done).map((r) => r.values.codigo_produto),
-          ),
-        ];
-        for (const [index, code] of codes.entries()) {
-          setProgress(`Composição ${index + 1} de ${codes.length}`);
-          const group = results.filter((r) => r.values.codigo_produto === code);
-          const { error } = await db().rpc("save_composition", {
-            p_product_id: productIds.get(code),
-            p_items: group.map((r) => ({
-              component_id: componentIds.get(r.values.codigo_componente),
-              quantity: Number(r.values.quantidade),
-            })),
-          });
-          group.forEach((r) => {
-            r.result = error ? `Falha: ${error.message}` : "Composição salva";
-            r.done = !error;
-          });
-          setRows([...results]);
-        }
-      } else {
+      if (kind !== "compositions") {
         for (const [index, row] of results.entries()) {
           if (row.done) continue;
           setProgress(`Cadastro ${index + 1} de ${results.length}`);
@@ -331,10 +284,11 @@ export default function Imports({
         </div>
       )}
       <section className="panel import-panel">
-        <h2>1. Planilha de cadastros</h2>
+        <h2>1. Planilhas de cadastros e kits</h2>
         <p>
           Importe primeiro produtos e componentes; depois as composições. Excel
-          (.xlsx), primeira aba, ou CSV em UTF-8, até 10 MB e 5.000 linhas.
+          (.xlsx), primeira aba, ou CSV em UTF-8, até 10 MB. Cadastros: até
+          5.000 linhas; kits: até 50.000 linhas e 100.000 relações.
         </p>
         <div className="toolbar">
           <label>
@@ -349,7 +303,6 @@ export default function Imports({
                 setNotice("");
                 setError("");
                 setFilename("");
-                setReplaceComposition(false);
               }}
             >
               <option value="products">Produtos</option>
@@ -357,126 +310,126 @@ export default function Imports({
               <option value="compositions">Composições</option>
             </select>
           </label>
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await downloadTemplate(kind);
-              } catch {
-                setError("Não foi possível gerar o modelo.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <Download size={19} />
-            Baixar modelo Excel
-          </button>
-          <label className={`upload-button ${busy ? "disabled" : ""}`}>
-            <FileUp size={20} />
-            Selecionar planilha
-            <input
-              type="file"
-              accept=".xlsx,.csv"
-              disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) void analyze(f);
-              }}
-            />
-          </label>
-        </div>
-        <p>
-          Colunas: <strong>{columns[kind].join(", ")}</strong>. Formate códigos
-          como texto para preservar zeros à esquerda. Ativo: sim/não; vazio
-          mantém o status existente e cria novos registros ativos.
-        </p>
-        {kind === "components" && (
-          <p>Tipos aceitos: {componentTypes.join(", ")}.</p>
-        )}
-        {rows.length > 0 && (
-          <>
-            <h3>{filename}</h3>
-            <p>
-              {rows.length} linhas · {errors} com erro ·{" "}
-              {rows.filter((r) => r.existing).length} códigos já cadastrados.
-            </p>
-            {kind === "compositions" ? (
-              <label className="import-choice">
-                <input
-                  type="checkbox"
-                  checked={replaceComposition}
-                  disabled={busy}
-                  onChange={(e) => setReplaceComposition(e.target.checked)}
-                />
-                Confirmo substituir a composição completa dos produtos presentes
-                no arquivo. A ordem das linhas será a ordem dos itens.
-              </label>
-            ) : (
-              <label className="import-choice">
-                <input
-                  type="checkbox"
-                  checked={update}
-                  disabled={busy}
-                  onChange={(e) => setUpdate(e.target.checked)}
-                />
-                Atualizar descrição, tipo e status de códigos já cadastrados. As
-                fotos serão preservadas.
-              </label>
-            )}
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Linha</th>
-                    {columns[kind].map((c) => (
-                      <th key={c}>{c}</th>
-                    ))}
-                    <th>Resultado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.slice(0, 100).map((r) => (
-                    <tr key={r.line}>
-                      <td>{r.line}</td>
-                      {columns[kind].map((c) => (
-                        <td key={c}>{r.values[c]}</td>
-                      ))}
-                      <td>
-                        {r.error ||
-                          r.result ||
-                          (r.existing ? "Já cadastrado" : "Pronto")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p>
-              A prévia exibe até 100 linhas. O relatório inclui todas. Os
-              cadastros são gravados individualmente; cada composição é salva
-              por inteiro. Uma falha não desfaz as gravações concluídas.
-            </p>
-            <div className="panel-actions">
-              <button className="secondary" disabled={busy} onClick={report}>
-                Baixar relatório
-              </button>
+          {kind !== "compositions" && (
+            <>
               <button
-                className="primary"
-                disabled={
-                  busy ||
-                  errors > 0 ||
-                  rows.every((r) => r.done) ||
-                  (kind === "compositions" && !replaceComposition)
-                }
-                onClick={importData}
+                className="secondary"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await downloadTemplate(kind);
+                  } catch {
+                    setError("Não foi possível gerar o modelo.");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
               >
-                Confirmar importação
+                <Download size={19} />
+                Baixar modelo Excel
               </button>
-            </div>
+              <label className={`upload-button ${busy ? "disabled" : ""}`}>
+                <FileUp size={20} />
+                Selecionar planilha
+                <input
+                  type="file"
+                  accept=".xlsx,.csv"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void analyze(f);
+                  }}
+                />
+              </label>
+            </>
+          )}
+        </div>
+        {kind === "compositions" ? (
+          <KitImport onBusy={setBusy} />
+        ) : (
+          <>
+            <p>
+              Colunas: <strong>{columns[kind].join(", ")}</strong>. Formate
+              códigos como texto para preservar zeros à esquerda. Ativo:
+              sim/não; vazio mantém o status existente e cria novos registros
+              ativos.
+            </p>
+            {kind === "components" && (
+              <p>Tipos aceitos: {componentTypes.join(", ")}.</p>
+            )}
+            {rows.length > 0 && (
+              <>
+                <h3>{filename}</h3>
+                <p>
+                  {rows.length} linhas · {errors} com erro ·{" "}
+                  {rows.filter((r) => r.existing).length} códigos já
+                  cadastrados.
+                </p>
+                {
+                  <label className="import-choice">
+                    <input
+                      type="checkbox"
+                      checked={update}
+                      disabled={busy}
+                      onChange={(e) => setUpdate(e.target.checked)}
+                    />
+                    Atualizar descrição, tipo e status de códigos já
+                    cadastrados. As fotos serão preservadas.
+                  </label>
+                }
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Linha</th>
+                        {columns[kind].map((c) => (
+                          <th key={c}>{c}</th>
+                        ))}
+                        <th>Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.slice(0, 100).map((r) => (
+                        <tr key={r.line}>
+                          <td>{r.line}</td>
+                          {columns[kind].map((c) => (
+                            <td key={c}>{r.values[c]}</td>
+                          ))}
+                          <td>
+                            {r.error ||
+                              r.result ||
+                              (r.existing ? "Já cadastrado" : "Pronto")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p>
+                  A prévia exibe até 100 linhas. O relatório inclui todas. Os
+                  cadastros são gravados individualmente. Uma falha não desfaz
+                  as gravações concluídas.
+                </p>
+                <div className="panel-actions">
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={report}
+                  >
+                    Baixar relatório
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={busy || errors > 0 || rows.every((r) => r.done)}
+                    onClick={importData}
+                  >
+                    Confirmar importação
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
       </section>

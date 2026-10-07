@@ -142,6 +142,7 @@ export default function Consult() {
                   <table className="composition-table">
                     <thead>
                       <tr>
+                        <th>Foto</th>
                         <th>Item</th>
                         <th>Código</th>
                         <th>Descrição</th>
@@ -151,6 +152,12 @@ export default function Consult() {
                     <tbody>
                       {kit.items.map((i) => (
                         <tr key={i.code}>
+                          <td>
+                            <ProductImage
+                              path={i.image_url}
+                              alt={`Foto do componente ${i.code}`}
+                            />
+                          </td>
                           <td>
                             <span className="type-pill">{i.type}</span>
                           </td>
