@@ -41,7 +41,7 @@ test("todos os códigos repetidos e campos inválidos são bloqueados", () => {
   );
   assert.equal(rows.filter((r) => r.error).length, 3);
   assert.throws(
-    () => validateRows([["codigo"]], "products", []),
+    () => validateRows([["descricao"]], "products", []),
     /obrigatórias/,
   );
   assert.throws(() => activeValue("talvez"));
@@ -86,4 +86,43 @@ test("modelo Excel usa texto nos códigos e pode ser relido", async () => {
   await loaded.xlsx.load(await workbook.xlsx.writeBuffer());
   assert.equal(loaded.worksheets[0].getCell("A2").text, "0001");
   assert.equal(loaded.worksheets[0].getColumn(1).numFmt, "@");
+});
+
+test("descrição opcional: vazia ou sem coluna, para produtos e componentes", () => {
+  for (const [kind, matrix] of [
+    ["products", [["codigo"], ["00123"]]],
+    [
+      "products",
+      [
+        ["codigo", "descricao"],
+        ["00123", ""],
+      ],
+    ],
+    [
+      "components",
+      [
+        ["codigo", "tipo"],
+        ["C1", "Caixa"],
+      ],
+    ],
+    [
+      "components",
+      [
+        ["codigo", "tipo", "descricao"],
+        ["C1", "Caixa", ""],
+      ],
+    ],
+  ])
+    assert.equal(validateRows(matrix, kind, ["Caixa"])[0].error, "");
+  assert.match(
+    validateRows(
+      [
+        ["codigo", "descricao"],
+        ["P", "a".repeat(301)],
+      ],
+      "products",
+      [],
+    )[0].error,
+    /300/,
+  );
 });

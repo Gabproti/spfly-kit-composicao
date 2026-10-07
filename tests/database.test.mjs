@@ -431,5 +431,53 @@ test("Fluxo de kits e segurança RLS em PostgreSQL local", async (t) => {
       assert.equal(kit.rows[0].kit.items.length, 352);
     },
   );
+  await pg.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202610070002_optional_description.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await t.test(
+    "Produtos e componentes aceitam descrição vazia ou omitida, preservando o limite",
+    async () => {
+      await as(admin, () =>
+        pg.exec(
+          "insert into public.products(code) values('SEM-DESC'); insert into public.components(code,type,description) values('SEM-DESC','Outros','');",
+        ),
+      );
+      assert.equal(
+        (
+          await pg.query(
+            "select description from public.products where code='SEM-DESC'",
+          )
+        ).rows[0].description,
+        "",
+      );
+      assert.equal(
+        (
+          await pg.query(
+            "select description from public.components where code='SEM-DESC'",
+          )
+        ).rows[0].description,
+        "",
+      );
+      await assert.rejects(
+        as(admin, () =>
+          pg.query(
+            "insert into public.products(code,description) values('LONG',$1)",
+            ["a".repeat(301)],
+          ),
+        ),
+      );
+      await assert.rejects(
+        as(operator, () =>
+          pg.exec("insert into public.products(code) values('FORBIDDEN')"),
+        ),
+      );
+    },
+  );
   await pg.close();
 });
