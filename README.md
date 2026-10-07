@@ -201,3 +201,6 @@ Os testes executam a migração SQL real em PGlite com roles anon/authenticated,
 Não há dados de demonstração misturados com produção. `seed.example.sql` é opcional e serve apenas para testar a composição de exemplo; cadastre uma foto real do produto para conferência física. A arquitetura recebe código textual e Enter, permitindo futura integração com leitores que emulam teclado, sem adicionar uma função de leitura não solicitada.
 
 Referências técnicas: https://supabase.com/docs/guides/database/postgres/row-level-security, https://supabase.com/docs/guides/functions/auth-legacy-jwt, https://vite.dev/guide/env-and-mode.
+
+### Descrição opcional
+Aplique `supabase/migrations/202610070002_optional_description.sql` para permitir descrições vazias em produtos e componentes. O cadastro manual e a importação aceitam descrição vazia; a coluna `descricao` pode ser omitida. Ao atualizar por uma planilha sem essa coluna, a descrição existente é preservada. O limite de 300 caracteres permanece.
