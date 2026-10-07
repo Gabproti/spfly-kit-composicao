@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
   Boxes,
   ClipboardList,
@@ -15,14 +15,15 @@ import type { Session } from "@supabase/supabase-js";
 import { configured, db, fail, supabase } from "./lib/supabase";
 import type { Profile } from "./lib/types";
 import Login from "./pages/Login";
-import Consult from "./pages/Consult";
-import Catalog from "./pages/Catalog";
-import Compositions from "./pages/Compositions";
-import UserManagement from "./pages/Users";
-import Dashboard from "./pages/Dashboard";
-import History from "./pages/History";
-import Imports from "./pages/Imports";
+const Consult = lazy(() => import("./pages/Consult"));
+const Catalog = lazy(() => import("./pages/Catalog"));
+const Compositions = lazy(() => import("./pages/Compositions"));
+const UserManagement = lazy(() => import("./pages/Users"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const History = lazy(() => import("./pages/History"));
+const Imports = lazy(() => import("./pages/Imports"));
 import Brand from "./components/Brand";
+import { connectionMessage, withTimeout } from "./lib/connection";
 const nav = [
   { id: "dashboard", label: "Início", icon: LayoutDashboard },
   { id: "products", label: "Produtos", icon: Package },
@@ -41,11 +42,11 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [importing, setImporting] = useState(false);
   const loadProfile = useCallback(async (userId: string) => {
-    const { data, error } = await db()
+    const { data, error } = await withTimeout(db()
       .from("profiles")
       .select("*")
       .eq("id", userId)
-      .single();
+      .single());
     fail(error);
     if (!data.active)
       throw new Error("Seu acesso está inativo. Procure o administrador.");
@@ -55,23 +56,34 @@ export default function App() {
     if (!supabase) return;
     let live = true;
     let revision = 0;
+    let readyUser: string | null = null;
+    const startupTimer = setTimeout(() => {
+      if (!live) return;
+      setError(connectionMessage);
+      setLoading(false);
+    }, 15000);
     const sync = async (next: Session | null) => {
+      clearTimeout(startupTimer);
       const current = ++revision;
       setLoading(true);
       setError("");
       setSession(next);
       setProfile(null);
+      readyUser = null;
       try {
         if (next) {
           const p = await loadProfile(next.user.id);
-          if (live && current === revision) setProfile(p);
+          if (live && current === revision) {
+            readyUser = p.id;
+            setProfile(p);
+          }
         }
       } catch (e) {
         if (live && current === revision)
           setError(
             e instanceof Error && e.message.includes("inativo")
               ? e.message
-              : "Não foi possível validar seu perfil. Procure o administrador ou tente novamente.",
+              : "Não foi possível validar seu perfil. Verifique a conexão com o Supabase ou procure o administrador.",
           );
       } finally {
         if (live && current === revision) setLoading(false);
@@ -79,20 +91,24 @@ export default function App() {
     };
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => {
+    } = supabase.auth.onAuthStateChange((event, next) => {
       setTimeout(() => {
-        if (live) void sync(next);
+        if (!live) return;
+        // Token refresh and repeated sign-in notifications must not unmount
+        // a working screen (including an import in progress).
+        if (next && next.user.id === readyUser &&
+            (event === "TOKEN_REFRESHED" || event === "SIGNED_IN")) {
+          setSession(next);
+          return;
+        }
+        void sync(next);
       }, 0);
     });
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!live) return;
-      if (error) {
-        setLoading(false);
-        setError("Não foi possível recuperar sua sessão.");
-      } else void sync(data.session);
-    });
+    // INITIAL_SESSION provides the initial session once. A second getSession
+    // previously started a duplicate profile request on every initial load.
     return () => {
       live = false;
+      clearTimeout(startupTimer);
       subscription.unsubscribe();
     };
   }, [loadProfile]);
@@ -100,7 +116,7 @@ export default function App() {
     if (profile) setPage(profile.role === "admin" ? "dashboard" : "consult");
   }, [profile?.id, profile?.role]);
   const logout = async () => {
-    const { error } = await db().auth.signOut();
+    const { error } = await db().auth.signOut({ scope: "local" });
     if (error) {
       setError("Não foi possível sair. Tente novamente.");
       return;
@@ -133,7 +149,7 @@ export default function App() {
         <p>Validando acesso…</p>
       </div>
     );
-  if (!session) return <Login />;
+  if (!session) return <Login sessionError={error} />;
   if (!profile)
     return (
       <div className="setup">
@@ -204,6 +220,7 @@ export default function App() {
               {error}
             </div>
           )}
+          <Suspense fallback={<div className="loading-screen"><div className="spinner" /><p>Carregando tela…</p></div>}>
           {!admin || page === "consult" ? (
             <Consult />
           ) : page === "dashboard" ? (
@@ -221,6 +238,7 @@ export default function App() {
           ) : (
             <History />
           )}
+          </Suspense>
         </main>
         <footer>
           SPFLY <span>Consulta e composição de kits</span>
