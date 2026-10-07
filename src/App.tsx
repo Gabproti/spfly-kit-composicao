@@ -22,12 +22,14 @@ const UserManagement = lazy(() => import("./pages/Users"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const History = lazy(() => import("./pages/History"));
 const Imports = lazy(() => import("./pages/Imports"));
+const ComponentTypes = lazy(() => import("./pages/ComponentTypes"));
 import Brand from "./components/Brand";
 import { connectionMessage, withTimeout } from "./lib/connection";
 const nav = [
   { id: "dashboard", label: "Início", icon: LayoutDashboard },
   { id: "products", label: "Produtos", icon: Package },
   { id: "components", label: "Componentes", icon: Boxes },
+  { id: "component-types", label: "Tipos de componentes", icon: Settings },
   { id: "compositions", label: "Composições", icon: ClipboardList },
   { id: "users", label: "Usuários", icon: Users },
   { id: "history", label: "Histórico", icon: HistoryIcon },
@@ -42,11 +44,9 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [importing, setImporting] = useState(false);
   const loadProfile = useCallback(async (userId: string) => {
-    const { data, error } = await withTimeout(db()
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single());
+    const { data, error } = await withTimeout(
+      db().from("profiles").select("*").eq("id", userId).single(),
+    );
     fail(error);
     if (!data.active)
       throw new Error("Seu acesso está inativo. Procure o administrador.");
@@ -96,8 +96,11 @@ export default function App() {
         if (!live) return;
         // Token refresh and repeated sign-in notifications must not unmount
         // a working screen (including an import in progress).
-        if (next && next.user.id === readyUser &&
-            (event === "TOKEN_REFRESHED" || event === "SIGNED_IN")) {
+        if (
+          next &&
+          next.user.id === readyUser &&
+          (event === "TOKEN_REFRESHED" || event === "SIGNED_IN")
+        ) {
           setSession(next);
           return;
         }
@@ -220,24 +223,33 @@ export default function App() {
               {error}
             </div>
           )}
-          <Suspense fallback={<div className="loading-screen"><div className="spinner" /><p>Carregando tela…</p></div>}>
-          {!admin || page === "consult" ? (
-            <Consult />
-          ) : page === "dashboard" ? (
-            <Dashboard navigate={setPage} />
-          ) : page === "products" ? (
-            <Catalog kind="products" />
-          ) : page === "components" ? (
-            <Catalog kind="components" />
-          ) : page === "compositions" ? (
-            <Compositions />
-          ) : page === "users" ? (
-            <UserManagement currentUser={profile.id} />
-          ) : page === "imports" ? (
-            <Imports onBusy={setImporting} />
-          ) : (
-            <History />
-          )}
+          <Suspense
+            fallback={
+              <div className="loading-screen">
+                <div className="spinner" />
+                <p>Carregando tela…</p>
+              </div>
+            }
+          >
+            {!admin || page === "consult" ? (
+              <Consult />
+            ) : page === "dashboard" ? (
+              <Dashboard navigate={setPage} />
+            ) : page === "products" ? (
+              <Catalog kind="products" />
+            ) : page === "components" ? (
+              <Catalog kind="components" />
+            ) : page === "component-types" ? (
+              <ComponentTypes />
+            ) : page === "compositions" ? (
+              <Compositions />
+            ) : page === "users" ? (
+              <UserManagement currentUser={profile.id} />
+            ) : page === "imports" ? (
+              <Imports onBusy={setImporting} />
+            ) : (
+              <History />
+            )}
           </Suspense>
         </main>
         <footer>
