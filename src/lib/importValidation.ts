@@ -31,7 +31,9 @@ export function validateRows(
   const headers = matrix[0].map(normalizeHeader);
   if (new Set(headers).size !== headers.length)
     throw new Error("Existem cabeçalhos repetidos.");
-  const required = columns[kind].filter((c) => c !== "ativo");
+  const required = columns[kind].filter(
+    (c) => c !== "ativo" && c !== "descricao",
+  );
   if (required.some((c) => !headers.includes(c)))
     throw new Error(`Colunas obrigatórias: ${required.join(", ")}.`);
   const rows = matrix
@@ -72,8 +74,8 @@ export function validateRows(
         )
           throw new Error("Quantidade inteira de 1 a 9999.");
       } else {
-        if (!r.values.descricao || r.values.descricao.length > 300)
-          throw new Error("Descrição obrigatória, com até 300 caracteres.");
+        if ((r.values.descricao ?? "").length > 300)
+          throw new Error("Descrição deve ter até 300 caracteres.");
         activeValue(r.values.ativo ?? "");
         if (kind === "components") {
           const type = types.find(
