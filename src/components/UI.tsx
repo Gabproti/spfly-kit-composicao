@@ -15,9 +15,11 @@ export function Empty({ children }: { children: ReactNode }) {
 export function ProductImage({
   path,
   large = false,
+  alt = "Foto de referência do produto",
 }: {
   path: string | null;
   large?: boolean;
+  alt?: string;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -37,11 +39,7 @@ export function ProductImage({
   return (
     <div className={large ? "product-photo large" : "product-photo"}>
       {url ? (
-        <img
-          src={url}
-          alt="Foto de referência do produto"
-          onError={() => setUrl(null)}
-        />
+        <img src={url} alt={alt} loading="lazy" onError={() => setUrl(null)} />
       ) : (
         <div className="photo-empty">
           <Camera size={large ? 44 : 22} />
