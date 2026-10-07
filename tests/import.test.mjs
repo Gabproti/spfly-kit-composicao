@@ -126,3 +126,36 @@ test("descrição opcional: vazia ou sem coluna, para produtos e componentes", (
     /300/,
   );
 });
+
+test("componentes aceitam tipo vazio ou ausente e validam tipos personalizados", () => {
+  for (const matrix of [
+    [["codigo"], ["C1"]],
+    [
+      ["codigo", "tipo"],
+      ["C1", " "],
+    ],
+  ]) {
+    assert.equal(validateRows(matrix, "components", [])[0].error, "");
+  }
+  const row = validateRows(
+    [
+      ["codigo", "tipo"],
+      ["C1", "certificado"],
+    ],
+    "components",
+    ["Certificado"],
+  )[0];
+  assert.equal(row.error, "");
+  assert.equal(row.values.tipo, "Certificado");
+  assert.match(
+    validateRows(
+      [
+        ["codigo", "tipo"],
+        ["C1", "Inexistente"],
+      ],
+      "components",
+      ["Certificado"],
+    )[0].error,
+    /não cadastrado/,
+  );
+});

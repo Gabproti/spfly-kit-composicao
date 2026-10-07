@@ -479,5 +479,129 @@ test("Fluxo de kits e segurança RLS em PostgreSQL local", async (t) => {
       );
     },
   );
+  await pg.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202610070003_component_types.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await t.test(
+    "Tipos cadastráveis preservam existentes e permitem vincular componentes sem tipo",
+    async () => {
+      assert.equal(
+        (
+          await pg.query(
+            "select count(*)::integer as n from public.component_types",
+          )
+        ).rows[0].n,
+        8,
+      );
+      await as(admin, () =>
+        pg.exec(
+          "insert into public.components(code) values('TIPO-PENDENTE'); insert into public.components(code,type) values('TIPO-VAZIO','   ');",
+        ),
+      );
+      assert.equal(
+        (
+          await pg.query(
+            "select type from public.components where code='TIPO-PENDENTE'",
+          )
+        ).rows[0].type,
+        null,
+      );
+      assert.equal(
+        (
+          await pg.query(
+            "select type from public.components where code='TIPO-VAZIO'",
+          )
+        ).rows[0].type,
+        null,
+      );
+      await as(admin, () =>
+        pg.exec(
+          "insert into public.component_types(name) values('Certificado'); update public.components set type='Certificado' where code='TIPO-PENDENTE';",
+        ),
+      );
+      assert.equal(
+        (
+          await pg.query(
+            "select type from public.components where code='TIPO-PENDENTE'",
+          )
+        ).rows[0].type,
+        "Certificado",
+      );
+      assert.equal(
+        (
+          await pg.query("select type from public.components where id=$1", [
+            component,
+          ])
+        ).rows[0].type,
+        "Caixa",
+      );
+      await assert.rejects(
+        as(admin, () =>
+          pg.exec(
+            "insert into public.component_types(name) values('certificado')",
+          ),
+        ),
+      );
+      await assert.rejects(
+        as(admin, () =>
+          pg.exec("insert into public.component_types(name) values('Relogio')"),
+        ),
+      );
+      await assert.rejects(
+        as(admin, () =>
+          pg.exec(
+            "update public.components set type='NAO-CADASTRADO' where code='TIPO-PENDENTE'",
+          ),
+        ),
+      );
+    },
+  );
+  await t.test(
+    "Operadores não cadastram tipos nem classificam componentes; tipos nulos não bloqueiam kits",
+    async () => {
+      await assert.rejects(
+        as(operator, () =>
+          pg.exec(
+            "insert into public.component_types(name) values('INDEVIDO')",
+          ),
+        ),
+      );
+      const deniedUpdate = await as(operator, () => pg.query("update public.components set type=null returning id"));
+      assert.equal(deniedUpdate.rows.length, 0);
+      assert.equal((await pg.query("select type from public.components where id=$1", [component])).rows[0].type, "Caixa");
+      await assert.rejects(
+        as(disabled, () =>
+          pg.exec("insert into public.component_types(name) values('INATIVO')"),
+        ),
+      );
+      await assert.rejects(
+        as(null, () => pg.exec("select * from public.component_types")),
+      );
+      await as(admin, () =>
+        pg.query("update public.components set type=null where id=$1", [
+          component,
+        ]),
+      );
+      const kit = await as(operator, () =>
+        pg.query("select public.consult_kit('00123') as kit"),
+      );
+      assert.equal(
+        kit.rows[0].kit.items.find((item) => item.code === "0001").type,
+        null,
+      );
+      await as(admin, () =>
+        pg.query("update public.components set type=$1 where id=$2", [
+          "Caixa",
+          component,
+        ]),
+      );
+    },
+  );
   await pg.close();
 });
