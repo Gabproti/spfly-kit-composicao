@@ -1,6 +1,9 @@
 import Papa from "papaparse";
 import { columns, type ImportKind } from "./importValidation";
-export async function readImportFile(file: File): Promise<string[][]> {
+export async function readImportFile(
+  file: File,
+  kits = false,
+): Promise<string[][]> {
   if (file.size > 10 * 1024 * 1024)
     throw new Error("O arquivo deve ter até 10 MB.");
   if (/\.csv$/i.test(file.name)) {
@@ -9,6 +12,10 @@ export async function readImportFile(file: File): Promise<string[][]> {
     });
     if (result.errors.length)
       throw new Error(`CSV inválido: ${result.errors[0].message}`);
+    if (result.data.length > (kits ? 50001 : 5001))
+      throw new Error(
+        "O arquivo ultrapassa o limite de linhas. Divida em lotes.",
+      );
     return result.data;
   }
   if (!/\.xlsx$/i.test(file.name))
@@ -18,8 +25,15 @@ export async function readImportFile(file: File): Promise<string[][]> {
   await book.xlsx.load(await file.arrayBuffer());
   const sheet = book.worksheets[0];
   if (!sheet) throw new Error("O arquivo não contém uma aba.");
-  if (sheet.rowCount > 5001 || sheet.columnCount > 30)
-    throw new Error("Limite de 5.000 linhas e 30 colunas.");
+  if (
+    sheet.rowCount > (kits ? 50001 : 5001) ||
+    (!kits && sheet.columnCount > 30)
+  )
+    throw new Error(
+      kits
+        ? "Limite de 50.000 linhas por arquivo."
+        : "Limite de 5.000 linhas e 30 colunas.",
+    );
   const matrix: string[][] = [];
   sheet.eachRow({ includeEmpty: true }, (row) => {
     const values: string[] = [];
@@ -35,14 +49,19 @@ export async function readImportFile(file: File): Promise<string[][]> {
       if (
         typeof cell.value === "number" &&
         !Number.isSafeInteger(cell.value) &&
-        /codigo/.test(
-          String(sheet.getRow(1).getCell(i).text)
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, ""),
-        )
+        (kits ||
+          /codigo/.test(
+            String(sheet.getRow(1).getCell(i).text)
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, ""),
+          ))
       )
         throw new Error(`Linha ${row.number}: formate o código como texto.`);
-      values.push(cell.text);
+      values.push(
+        kits && typeof cell.value === "number" && /^0+$/.test(cell.numFmt ?? "")
+          ? String(cell.value).padStart(cell.numFmt.length, "0")
+          : cell.text,
+      );
     }
     matrix.push(values);
   });
@@ -60,11 +79,22 @@ export async function downloadTemplate(kind: ImportKind) {
   const { default: ExcelJS } = await import("exceljs");
   const book = new ExcelJS.Workbook();
   const sheet = book.addWorksheet("Dados");
-  sheet.addRow(columns[kind]);
+  const headers =
+    kind === "compositions"
+      ? [
+          "CODIGO_PRODUTO",
+          "COMPONENTE_1",
+          "COMPONENTE_2",
+          "COMPONENTE_3",
+          "COMPONENTE_4",
+        ]
+      : columns[kind];
+  sheet.addRow(headers);
   sheet.getRow(1).font = { bold: true };
-  columns[kind].forEach((c, i) => {
+  headers.forEach((c, i) => {
     sheet.getColumn(i + 1).width = c === "descricao" ? 45 : 24;
-    if (c.startsWith("codigo")) sheet.getColumn(i + 1).numFmt = "@";
+    if (kind === "compositions" || c.startsWith("codigo"))
+      sheet.getColumn(i + 1).numFmt = "@";
   });
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   downloadFile(

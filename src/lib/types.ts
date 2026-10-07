@@ -24,6 +24,7 @@ export type Kit = {
   product: Product;
   items: {
     code: string;
+    image_url: string | null;
     type: string;
     description: string;
     quantity: number;
