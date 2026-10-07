@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Download, FileUp, Images } from "lucide-react";
 import Papa from "papaparse";
 import { db, fail } from "../lib/supabase";
-import { componentTypes, type Product } from "../lib/types";
+import type { Product } from "../lib/types";
+import { loadComponentTypes } from "../lib/componentTypes";
 import {
   activeValue,
   columns,
@@ -59,6 +60,14 @@ export default function Imports({
   const [update, setUpdate] = useState(false);
   const [replacePhotos, setReplacePhotos] = useState(false);
   const [progress, setProgress] = useState("");
+  const [componentTypes, setComponentTypes] = useState<string[]>([]);
+  useEffect(() => {
+    loadComponentTypes()
+      .then(setComponentTypes)
+      .catch(() =>
+        setError("Não foi possível carregar os tipos de componentes."),
+      );
+  }, []);
   useEffect(() => {
     onBusy(busy);
     return () => onBusy(false);
@@ -79,11 +88,9 @@ export default function Imports({
     setFilename(file.name);
     setProgress("Lendo e validando arquivo…");
     try {
-      const checked = validateRows(
-        await readImportFile(file),
-        kind,
-        componentTypes,
-      );
+      const types = kind === "components" ? await loadComponentTypes() : [];
+      if (kind === "components") setComponentTypes(types);
+      const checked = validateRows(await readImportFile(file), kind, types);
       if (!checked.length)
         throw new Error("Inclua os dados abaixo do cabeçalho.");
       if (kind !== "compositions") {
@@ -125,7 +132,10 @@ export default function Imports({
                 ? {}
                 : { active: true }
               : { active }),
-            ...(kind === "components" ? { type: row.values.tipo } : {}),
+            ...(kind === "components" &&
+            (row.values.tipo !== undefined || !row.existing)
+              ? { type: row.values.tipo || null }
+              : {}),
           };
           const response = row.existing
             ? await db()
@@ -357,7 +367,11 @@ export default function Imports({
               o status existente e cria novos registros ativos.
             </p>
             {kind === "components" && (
-              <p>Tipos aceitos: {componentTypes.join(", ")}.</p>
+              <p>
+                Tipo é opcional; a coluna pode ser omitida. Cadastre novos tipos
+                em “Tipos de componentes” e vincule depois em Componentes →
+                Editar. Tipos cadastrados: {componentTypes.join(", ")}.
+              </p>
             )}
             {rows.length > 0 && (
               <>

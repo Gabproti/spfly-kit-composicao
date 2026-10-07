@@ -159,7 +159,9 @@ export default function Consult() {
                             />
                           </td>
                           <td>
-                            <span className="type-pill">{i.type}</span>
+                            <span className="type-pill">
+                              {i.type || "Sem tipo"}
+                            </span>
                           </td>
                           <td className="mono">{i.code}</td>
                           <td>{i.description}</td>

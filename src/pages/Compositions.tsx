@@ -175,7 +175,7 @@ export default function Compositions() {
                     <option value="">Selecione um componente cadastrado</option>
                     {available.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.code} — {c.type} · {c.description}
+                        {c.code} — {c.type || "Sem tipo"} · {c.description}
                       </option>
                     ))}
                   </select>
@@ -205,7 +205,7 @@ export default function Compositions() {
                       const c = components.find((c) => c.id === i.component_id);
                       return (
                         <tr key={i.component_id}>
-                          <td>{c?.type}</td>
+                          <td>{c?.type || "Sem tipo"}</td>
                           <td className="mono">{c?.code}</td>
                           <td>
                             {c?.description}

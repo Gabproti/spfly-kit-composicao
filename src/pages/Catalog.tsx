@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Plus, Search, Pencil, ImagePlus, Trash2 } from "lucide-react";
 import { db, fail } from "../lib/supabase";
-import { componentTypes } from "../lib/types";
+import { loadComponentTypes } from "../lib/componentTypes";
 import type { Product, Component } from "../lib/types";
 import {
   Empty,
@@ -23,7 +23,7 @@ type Draft = {
 const blank: Draft = {
   code: "",
   description: "",
-  type: "Relógio",
+  type: "",
   image_url: null,
   active: true,
 };
@@ -41,12 +41,14 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [changing, setChanging] = useState<string | null>(null);
+  const [componentTypes, setComponentTypes] = useState<string[]>([]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await db().from(kind).select("*").order("code");
       fail(error);
       setRows(data ?? []);
+      if (kind === "components") setComponentTypes(await loadComponentTypes());
     } catch {
       setError("Não foi possível carregar os cadastros.");
     } finally {
@@ -80,7 +82,7 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
     setFile(null);
     setDraft(
       row
-        ? { ...row, type: "type" in row ? row.type : "Relógio" }
+        ? { ...row, type: "type" in row ? (row.type ?? "") : "" }
         : { ...blank },
     );
   }
@@ -99,7 +101,7 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
         description: draft.description.trim(),
         active: draft.active,
         image_url: image,
-        ...(components ? { type: draft.type } : {}),
+        ...(components ? { type: draft.type || null } : {}),
       };
       if (!values.code) throw new Error("Informe o código.");
       const result = draft.id
@@ -218,7 +220,7 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
                       <ProductImage path={row.image_url} />
                     </td>
                     <td className="mono">{row.code}</td>
-                    {"type" in row && <td>{row.type}</td>}
+                    {"type" in row && <td>{row.type || "Sem tipo"}</td>}
                     <td className="description-cell">{row.description}</td>
                     <td>
                       <Status active={row.active} />
@@ -269,13 +271,14 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
               </label>
               {components && (
                 <label>
-                  Tipo
+                  Tipo (opcional)
                   <select
                     value={draft.type}
                     onChange={(e) =>
                       setDraft({ ...draft, type: e.target.value })
                     }
                   >
+                    <option value="">Sem tipo</option>
                     {componentTypes.map((t) => (
                       <option key={t}>{t}</option>
                     ))}
