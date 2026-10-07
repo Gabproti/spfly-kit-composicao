@@ -204,3 +204,6 @@ Referências técnicas: https://supabase.com/docs/guides/database/postgres/row-l
 
 ### Descrição opcional
 Aplique `supabase/migrations/202610070002_optional_description.sql` para permitir descrições vazias em produtos e componentes. O cadastro manual e a importação aceitam descrição vazia; a coluna `descricao` pode ser omitida. Ao atualizar por uma planilha sem essa coluna, a descrição existente é preservada. O limite de 300 caracteres permanece.
+
+### Tipos de componentes
+Aplique `supabase/migrations/202610070003_component_types.sql` após as anteriores. A lista fixa foi migrada para `component_types`, mantendo os oito tipos existentes. Administradores criam tipos em **Tipos de componentes**. Componentes aceitam tipo em branco/nulo, inclusive importação sem coluna `tipo`; a classificação pode ser feita depois em **Componentes → Editar → Tipo**. Tipos informados na planilha precisam estar cadastrados. Omitir a coluna ao atualizar preserva a classificação existente; uma célula vazia explícita remove a classificação. RLS bloqueia criação por operadores/inativos/anônimos, e a FK impede tipos inexistentes. Tipos sem classificação aparecem como “Sem tipo” e continuam disponíveis na consulta de kits.
