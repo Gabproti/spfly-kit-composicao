@@ -17,7 +17,11 @@ export async function boundedFetch(input: RequestInfo | URL, init?: RequestInit)
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();
   else signal?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const requestUrl = input instanceof Request ? input.url : String(input);
+  // Photo and spreadsheet writes need time on slower connections; auth should
+  // fail quickly when its server is unavailable.
+  const timeout = new URL(requestUrl).pathname.startsWith("/auth/v1/") ? 12000 : 120000;
+  const timer = setTimeout(() => controller.abort(), timeout);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
