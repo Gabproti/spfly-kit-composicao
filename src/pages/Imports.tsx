@@ -352,9 +352,9 @@ export default function Imports({
           <>
             <p>
               Colunas: <strong>{columns[kind].join(", ")}</strong>. Formate
-              códigos como texto para preservar zeros à esquerda. Ativo:
-              sim/não; vazio mantém o status existente e cria novos registros
-              ativos.
+              códigos como texto para preservar zeros à esquerda. Descrição é
+              opcional e a coluna pode ser omitida. Ativo: sim/não; vazio mantém
+              o status existente e cria novos registros ativos.
             </p>
             {kind === "components" && (
               <p>Tipos aceitos: {componentTypes.join(", ")}.</p>

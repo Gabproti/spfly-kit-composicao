@@ -101,8 +101,7 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
         image_url: image,
         ...(components ? { type: draft.type } : {}),
       };
-      if (!values.code || !values.description)
-        throw new Error("Informe código e descrição.");
+      if (!values.code) throw new Error("Informe o código.");
       const result = draft.id
         ? await db().from(kind).update(values).eq("id", draft.id)
         : await db().from(kind).insert(values);
@@ -284,9 +283,8 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
                 </label>
               )}
               <label className="full">
-                Descrição
+                Descrição (opcional)
                 <input
-                  required
                   maxLength={300}
                   value={draft.description}
                   onChange={(e) =>
