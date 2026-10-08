@@ -10,7 +10,6 @@ import {
 } from "../lib/photoFiles";
 import {
   customRuleError,
-  duplicateTargets,
   matchImage,
   photoRules,
   productIndex,
@@ -18,7 +17,13 @@ import {
   type PhotoRuleId,
 } from "../lib/photoRules";
 import { Modal, ProductImage, uploadPhoto } from "./UI";
-type Choice = "upload" | "keep" | "skip" | "";
+import {
+  applyExistingChoice,
+  batchConflicts,
+  preparePhotoBatch,
+  readyPhoto,
+  type PhotoChoice as Choice,
+} from "../lib/photoBatch";
 type Row = {
   source: PhotoSource;
   code: string;
@@ -84,6 +89,10 @@ export default function PhotoImport({
 }) {
   const [rule, setRule] = useState<PhotoRuleId>("exact"),
     [custom, setCustom] = useState({ prefix: 0, suffix: 0 });
+  const [existingChoice, setExistingChoice] = useState<"keep" | "upload">(
+    "keep",
+  );
+  const [view, setView] = useState<"ready" | "review" | "all">("ready");
   const [rows, setRows] = useState<Row[]>([]),
     [products, setProducts] = useState<PhotoProduct[]>([]),
     [source, setSource] = useState("");
@@ -100,31 +109,27 @@ export default function PhotoImport({
     [historyError, setHistoryError] = useState("");
   const batch = useRef<string | null>(null),
     stop = useRef(false);
-  const duplicates = useMemo(
-    () =>
-      duplicateTargets(
-        rows.map((r) => ({
-          target: r.target,
-          ignored:
-            r.choice === "skip" ||
-            r.choice === "keep" ||
-            Boolean(r.source.error),
-        })),
-      ),
-    [rows],
-  );
+  const duplicates = useMemo(() => batchConflicts(rows), [rows]);
   const locked = busy || disabled,
     frozen = locked || Boolean(batch.current);
   const customError = rule === "custom" ? customRuleError(custom) : "";
-  const unresolved = rows.filter(
-    (r) =>
-      !r.done &&
-      !r.source.error &&
-      r.choice !== "skip" &&
-      r.choice !== "keep" &&
-      r.target &&
-      (duplicates.has(r.target.id) || !r.choice),
-  ).length;
+  const ready = rows.filter((r) => readyPhoto(r, duplicates)).length;
+  const needsReview = (r: Row) =>
+    !r.done &&
+    r.choice !== "skip" &&
+    (Boolean(r.source.error) ||
+      !r.target ||
+      Boolean(r.target && duplicates.has(r.target.id)));
+  const reviewCount = rows.filter(needsReview).length;
+  const visibleRows = rows
+    .map((row, i) => ({ row, i }))
+    .filter(
+      ({ row }) =>
+        view === "all" ||
+        (view === "ready" ? readyPhoto(row, duplicates) : needsReview(row)),
+    );
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / 100));
+  const shownPage = Math.min(page, pageCount - 1);
   useEffect(() => {
     onBusy(busy);
     return () => onBusy(false);
@@ -180,7 +185,11 @@ export default function PhotoImport({
     const map = productIndex(stored);
     return sources.map((s) => {
       const m = matchImage(s.name, selected, map, options);
-      return { source: s, ...m, choice: m.target?.image_url ? "" : "upload" };
+      return {
+        source: s,
+        ...m,
+        choice: m.target?.image_url ? existingChoice : "upload",
+      };
     });
   }
   async function analyze(files: File[]) {
@@ -190,6 +199,7 @@ export default function PhotoImport({
     setRows([]);
     batch.current = null;
     setPage(0);
+    setView("ready");
     try {
       const sources = await readPhotoSources(files, setProgress);
       setProgress("Carregando produtos…");
@@ -250,22 +260,31 @@ export default function PhotoImport({
             ? r.status === "ambiguous"
               ? "Ambígua: escolha o produto"
               : "Produto não encontrado"
-            : duplicates.has(r.target.id)
-              ? "Conflito: várias fotos para o mesmo produto"
-              : r.choice === "keep"
-                ? "Manter foto atual"
+            : r.choice === "keep"
+              ? "Manter foto atual"
+              : duplicates.has(r.target.id)
+                ? "Conflito: várias fotos para o mesmo produto"
                 : !r.choice
                   ? "Já tem foto: escolha uma opção"
                   : "Pronta para envio"))
     );
   }
   async function process() {
-    if (unresolved || customError) return;
+    if (!ready || customError) return;
     setBusy(true);
     setError("");
     setNotice("");
     stop.current = false;
-    const result = rows.map((r) => ({ ...r }));
+    const result = preparePhotoBatch(rows).map((r) => ({
+      ...r,
+      result:
+        !r.done &&
+        r.target &&
+        duplicates.has(r.target.id) &&
+        r.choice === "skip"
+          ? "Ignorada: várias fotos para o mesmo produto"
+          : r.result,
+    }));
     const id = batch.current ?? crypto.randomUUID();
     batch.current = id;
     try {
@@ -383,9 +402,7 @@ export default function PhotoImport({
         ),
       );
       batch.current = null;
-      setNotice(
-        "Prévia atualizada. Escolha novamente o destino de fotos já existentes.",
-      );
+      setNotice("Análise atualizada com sua escolha para as fotos existentes.");
     } catch (e) {
       setError(explain(e));
     } finally {
@@ -426,9 +443,8 @@ export default function PhotoImport({
     <section className="panel import-panel">
       <h2>Importar imagens de produtos</h2>
       <p>
-        Selecione um ZIP de até 100 MB ou imagens JPG, PNG e WebP. Até 5.000
-        arquivos, 5 MB por foto e 200 MB de imagens extraídas. Os produtos
-        precisam estar cadastrados.
+        Selecione o arquivo, escolha a regra e importe as fotos encontradas.
+        Você só precisa revisar as exceções.
       </p>
       {error && (
         <div className="notice error" role="alert">
@@ -456,20 +472,6 @@ export default function PhotoImport({
         </div>
       )}
       <div className="toolbar">
-        <label>
-          Regra de correspondência
-          <select
-            value={rule}
-            disabled={frozen}
-            onChange={(e) => changeRule(e.target.value as PhotoRuleId)}
-          >
-            {photoRules.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className={`upload-button ${locked ? "disabled" : ""}`}>
           Selecionar ZIP ou imagens
           <input
@@ -484,6 +486,21 @@ export default function PhotoImport({
             }}
           />
         </label>
+
+        <label>
+          Regra de correspondência
+          <select
+            value={rule}
+            disabled={frozen}
+            onChange={(e) => changeRule(e.target.value as PhotoRuleId)}
+          >
+            {photoRules.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           className="secondary"
           disabled={locked}
@@ -495,12 +512,16 @@ export default function PhotoImport({
           Histórico de imagens
         </button>
       </div>
-      <p>
-        A correspondência exata sempre tem prioridade. “Normalização controlada”
-        testa separadamente a remoção de N final, do último caractere e do
-        primeiro; se encontrar produtos diferentes, exige escolha manual.
-        Maiúsculas, minúsculas e zeros são preservados.
-      </p>
+      <details>
+        <summary>Como funcionam as regras e os limites?</summary>
+        <p>
+          Primeiro procuramos o código exato. A regra escolhida só é usada
+          quando não houver correspondência exata. Normalização testa remoções
+          separadas, sem encadeá-las; vários produtos possíveis exigem escolha
+          manual. Até 5.000 arquivos, 5 MB por imagem, ZIP de 100 MB e 200 MB
+          extraídos.
+        </p>
+      </details>
       {rule === "custom" && (
         <div className="toolbar">
           <label>
@@ -536,155 +557,234 @@ export default function PhotoImport({
       {rows.length > 0 && (
         <>
           <h3>{source}</h3>
-          <p>
-            {rows.length} arquivos ·{" "}
-            {rows.filter((r) => r.done && r.result === "Foto vinculada").length}{" "}
-            vinculados ·{" "}
-            {
-              rows.filter(
-                (r) => !r.target && !r.source.error && r.status !== "ambiguous",
-              ).length
-            }{" "}
-            não encontrados ·{" "}
-            {rows.filter((r) => r.status === "ambiguous").length} ambíguos ·{" "}
-            {rows.filter((r) => r.source.error).length} inválidos.
-          </p>
-          {unresolved > 0 && (
-            <div className="notice">
-              Resolva {unresolved} escolhas pendentes ou conflitos antes de
-              confirmar. Para várias imagens do mesmo produto, cancele as
-              excedentes.
-            </div>
-          )}
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Arquivo</th>
-                  <th>Código identificado</th>
-                  <th>Produto</th>
-                  <th>Regra aplicada</th>
-                  <th>Status</th>
-                  <th>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(page * 100, (page + 1) * 100).map((r, n) => {
-                  const i = page * 100 + n;
-                  return (
-                    <tr key={i}>
-                      <td>{r.source.name}</td>
-                      <td>{r.code}</td>
-                      <td>
-                        {r.target?.code ?? "—"}
-                        <small>{r.target?.description}</small>
-                      </td>
-                      <td>{label(r.rule)}</td>
-                      <td>{status(r)}</td>
-                      <td>
-                        {!r.source.error && (
-                          <button
-                            className="secondary small"
-                            disabled={frozen}
-                            onClick={() => {
-                              setManual(i);
-                              setSearch(r.status === "ambiguous" ? "" : r.code);
-                            }}
-                          >
-                            Escolher produto
-                          </button>
-                        )}
-                        {!r.done && (
-                          <select
-                            aria-label={`Destino de ${r.source.name}`}
-                            value={r.choice}
-                            disabled={frozen || Boolean(r.source.error)}
-                            onChange={(e) =>
-                              changeRow(i, { choice: e.target.value as Choice })
-                            }
-                          >
-                            {r.target?.image_url ? (
-                              <>
-                                <option value="">Escolha…</option>
-                                <option value="keep">Manter foto atual</option>
-                                <option value="upload">Substituir foto</option>
-                              </>
-                            ) : (
-                              <option value="upload">Enviar imagem</option>
-                            )}
-                            <option value="skip">Cancelar este arquivo</option>
-                          </select>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="panel-actions">
-            <button
-              className="secondary"
-              disabled={locked || page === 0}
-              onClick={() => setPage(page - 1)}
-            >
-              Anterior
-            </button>
-            <span>
-              Página {page + 1} de {Math.ceil(rows.length / 100)}
-            </span>
-            <button
-              className="secondary"
-              disabled={locked || (page + 1) * 100 >= rows.length}
-              onClick={() => setPage(page + 1)}
-            >
-              Próxima
-            </button>
-          </div>
-          <div className="panel-actions">
-            <button
-              className="secondary"
-              disabled={locked}
-              onClick={() =>
-                csv(
-                  "relatorio-imagens.csv",
-                  rows.map((r) => ({
-                    arquivo: r.source.name,
-                    codigo_identificado: r.code,
-                    produto: r.target?.code ?? "",
-                    regra: label(r.rule),
-                    status: status(r),
-                    candidatos: r.candidates.map((p) => p.code).join(" | "),
-                  })),
-                )
-              }
-            >
-              Baixar relatório
-            </button>
-            <button className="secondary" disabled={locked} onClick={reanalyze}>
-              Analisar novamente
-            </button>
+          <div className="toolbar">
+            <label>
+              Se o produto já tem foto
+              <select
+                value={existingChoice}
+                disabled={frozen}
+                onChange={(e) => {
+                  const choice = e.target.value as "keep" | "upload";
+                  setExistingChoice(choice);
+                  setRows((current) => applyExistingChoice(current, choice));
+                  setPage(0);
+                }}
+              >
+                <option value="keep">Manter todas as fotos atuais</option>
+                <option value="upload">
+                  Substituir pelas imagens deste lote
+                </option>
+              </select>
+            </label>
             <button
               className="primary"
-              disabled={
-                locked ||
-                Boolean(customError) ||
-                unresolved > 0 ||
-                rows.every((r) => r.done)
-              }
+              disabled={locked || Boolean(customError) || !ready}
               onClick={process}
             >
-              {batch.current
-                ? "Tentar arquivos pendentes"
-                : "Confirmar importação de imagens"}
+              {batch.current ? "Enviar pendentes" : "Importar"} {ready}{" "}
+              {ready === 1 ? "foto pronta" : "fotos prontas"}
             </button>
           </div>
+          {existingChoice === "upload" &&
+            rows.some(
+              (r) => r.target?.image_url && r.choice === "upload" && !r.done,
+            ) && (
+              <p className="notice">
+                Ao importar, as fotos atuais dos produtos correspondentes serão
+                substituídas.
+              </p>
+            )}
           <p>
-            Arquivos sem correspondência ou inválidos ficam no relatório. O
-            envio é feito uma imagem por vez; uma falha não desfaz os vínculos
-            concluídos. Para mudar uma prévia após o início, use “Analisar
-            novamente”.
+            {rows.length} arquivos · {ready} prontos para enviar ·{" "}
+            {
+              rows.filter(
+                (r) => !r.done && r.choice === "keep" && !r.source.error,
+              ).length
+            }{" "}
+            fotos atuais mantidas · {reviewCount} para revisão ·{" "}
+            {rows.filter((r) => r.done && r.result === "Foto vinculada").length}{" "}
+            vinculados.
           </p>
+          {reviewCount > 0 && (
+            <p>
+              Você pode importar as fotos prontas agora. Os {reviewCount}{" "}
+              arquivos para revisão ficarão fora do envio e aparecerão no
+              relatório.
+            </p>
+          )}
+          <div className="toolbar" role="group" aria-label="Filtrar imagens">
+            <button
+              className={view === "ready" ? "primary small" : "secondary small"}
+              disabled={locked}
+              onClick={() => {
+                setView("ready");
+                setPage(0);
+              }}
+            >
+              Prontas ({ready})
+            </button>
+            <button
+              className={
+                view === "review" ? "primary small" : "secondary small"
+              }
+              disabled={locked}
+              onClick={() => {
+                setView("review");
+                setPage(0);
+              }}
+            >
+              Revisar ({reviewCount})
+            </button>
+            <button
+              className={view === "all" ? "primary small" : "secondary small"}
+              disabled={locked}
+              onClick={() => {
+                setView("all");
+                setPage(0);
+              }}
+            >
+              Todas ({rows.length})
+            </button>
+          </div>
+          {visibleRows.length > 0 ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Imagem</th>
+                    <th>Produto</th>
+                    <th>Resultado</th>
+                    <th>Ajuste opcional</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows
+                    .slice(shownPage * 100, (shownPage + 1) * 100)
+                    .map(({ row: r, i }) => (
+                      <tr key={i}>
+                        <td>
+                          {r.source.name}
+                          <small>
+                            Código identificado: {r.code} · {label(r.rule)}
+                          </small>
+                        </td>
+                        <td>
+                          {r.target?.code ?? "—"}
+                          <small>{r.target?.description}</small>
+                        </td>
+                        <td>{status(r)}</td>
+                        <td>
+                          {!r.source.error && !r.done && (
+                            <button
+                              className="secondary small"
+                              disabled={frozen}
+                              onClick={() => {
+                                setManual(i);
+                                setSearch(
+                                  r.status === "ambiguous" ? "" : r.code,
+                                );
+                              }}
+                            >
+                              Ajustar vínculo
+                            </button>
+                          )}
+                          {!r.done && !r.source.error && (
+                            <select
+                              aria-label={"Destino de " + r.source.name}
+                              value={r.choice}
+                              disabled={frozen}
+                              onChange={(e) =>
+                                changeRow(i, {
+                                  choice: e.target.value as Choice,
+                                })
+                              }
+                            >
+                              {r.target?.image_url ? (
+                                <>
+                                  <option value="keep">Manter atual</option>
+                                  <option value="upload">
+                                    Substituir foto
+                                  </option>
+                                </>
+                              ) : (
+                                <option value="upload">Enviar imagem</option>
+                              )}
+                              <option value="skip">Ignorar arquivo</option>
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="notice">
+              {view === "ready"
+                ? "Nenhuma foto pronta para enviar. Confira a regra escolhida ou abra a aba Revisar."
+                : view === "review"
+                  ? "Nenhum ajuste necessário."
+                  : "Nenhum arquivo nesta lista."}
+            </p>
+          )}
+          {pageCount > 1 && (
+            <div className="panel-actions">
+              <button
+                className="secondary"
+                disabled={locked || shownPage === 0}
+                onClick={() => setPage(shownPage - 1)}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {shownPage + 1} de {pageCount}
+              </span>
+              <button
+                className="secondary"
+                disabled={locked || shownPage + 1 >= pageCount}
+                onClick={() => setPage(shownPage + 1)}
+              >
+                Próxima
+              </button>
+            </div>
+          )}
+          <details>
+            <summary>Relatório e outras opções</summary>
+            <div className="panel-actions">
+              <button
+                className="secondary"
+                disabled={locked}
+                onClick={() =>
+                  csv(
+                    "relatorio-imagens.csv",
+                    rows.map((r) => ({
+                      arquivo: r.source.name,
+                      codigo_identificado: r.code,
+                      produto: r.target?.code ?? "",
+                      regra: label(r.rule),
+                      status: status(r),
+                      candidatos: r.candidates.map((p) => p.code).join(" | "),
+                    })),
+                  )
+                }
+              >
+                Baixar relatório
+              </button>
+              <button
+                className="secondary"
+                disabled={locked}
+                onClick={reanalyze}
+              >
+                Atualizar análise
+              </button>
+            </div>
+            <p>
+              Depois de iniciar o envio, use Atualizar análise para mudar as
+              escolhas. Arquivos com várias fotos para o mesmo produto são
+              ignorados; ajuste ou ignore os excedentes antes de importar se
+              quiser incluí-los.
+            </p>
+          </details>
         </>
       )}
       {showHistory && (
@@ -792,7 +892,7 @@ export default function PhotoImport({
                       target: p,
                       rule: "manual",
                       status: "ready",
-                      choice: p.image_url ? "" : "upload",
+                      choice: p.image_url ? existingChoice : "upload",
                       candidates: [],
                     });
                     setManual(null);
