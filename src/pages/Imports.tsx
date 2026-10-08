@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, FileUp, Images } from "lucide-react";
+import { Download, FileUp } from "lucide-react";
 import Papa from "papaparse";
 import { db, fail } from "../lib/supabase";
 import type { Product } from "../lib/types";
@@ -7,7 +7,6 @@ import { loadComponentTypes } from "../lib/componentTypes";
 import {
   activeValue,
   columns,
-  photoCode,
   validateRows,
   type CheckedRow,
   type ImportKind,
@@ -17,17 +16,9 @@ import {
   downloadTemplate,
   readImportFile,
 } from "../lib/importFiles";
-import { uploadPhoto } from "../components/UI";
+import PhotoImport from "../components/PhotoImport";
 import KitImport from "../components/KitImport";
 type Row = CheckedRow & { existing?: Product; result?: string; done?: boolean };
-type Photo = {
-  file: File;
-  code: string;
-  target?: Product;
-  error: string;
-  result?: string;
-  done?: boolean;
-};
 async function catalog(table: "products" | "components") {
   const rows: Product[] = [];
   for (let offset = 0; ; offset += 1000) {
@@ -52,13 +43,12 @@ export default function Imports({
 }) {
   const [kind, setKind] = useState<ImportKind>("products");
   const [rows, setRows] = useState<Row[]>([]);
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [filename, setFilename] = useState("");
   const [update, setUpdate] = useState(false);
-  const [replacePhotos, setReplacePhotos] = useState(false);
   const [progress, setProgress] = useState("");
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
   useEffect(() => {
@@ -69,20 +59,19 @@ export default function Imports({
       );
   }, []);
   useEffect(() => {
-    onBusy(busy);
+    onBusy(busy || photoBusy);
     return () => onBusy(false);
-  }, [busy, onBusy]);
+  }, [busy, photoBusy, onBusy]);
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
-      if (busy) event.preventDefault();
+      if (busy || photoBusy) event.preventDefault();
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [busy]);
+  }, [busy, photoBusy]);
   async function analyze(file: File) {
     setBusy(true);
     setRows([]);
-    setPhotos([]);
     setError("");
     setNotice("");
     setFilename(file.name);
@@ -164,98 +153,12 @@ export default function Imports({
       setProgress("");
     }
   }
-  async function analyzePhotos(files: File[]) {
-    setBusy(true);
-    setRows([]);
-    setPhotos([]);
-    setError("");
-    setNotice("");
-    setFilename("");
-    setProgress("Associando fotos aos produtos…");
-    try {
-      if (files.length > 500)
-        throw new Error("Selecione até 500 fotos por lote.");
-      const stored = await catalog("products");
-      const byCode = new Map(stored.map((r) => [r.code, r]));
-      const codes = files.map((f) => photoCode(f.name));
-      setPhotos(
-        files.map((file, i) => ({
-          file,
-          code: codes[i],
-          target: byCode.get(codes[i]),
-          error:
-            !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
-            file.size > 5 * 1024 * 1024
-              ? "Formato inválido ou tamanho maior que 5 MB."
-              : codes.indexOf(codes[i]) !== codes.lastIndexOf(codes[i])
-                ? "Mais de uma foto para este código."
-                : !byCode.has(codes[i])
-                  ? "Produto não encontrado."
-                  : "",
-        })),
-      );
-    } catch (e) {
-      setError(explanation(e));
-    } finally {
-      setBusy(false);
-      setProgress("");
-    }
-  }
-  async function importPhotos() {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    const results = photos.map((p) => ({ ...p }));
-    try {
-      for (const [index, photo] of results.entries()) {
-        if (photo.error || photo.done || !photo.target) continue;
-        if (photo.target.image_url && !replacePhotos) {
-          photo.result = "Ignorada: produto já tem foto";
-          photo.done = true;
-          setPhotos([...results]);
-          continue;
-        }
-        setProgress(`Foto ${index + 1} de ${results.length}`);
-        let path: string | undefined;
-        try {
-          path = await uploadPhoto(photo.file);
-          const { error } = await db()
-            .from("products")
-            .update({ image_url: path })
-            .eq("id", photo.target.id)
-            .select("id")
-            .single();
-          fail(error);
-          photo.result = "Foto associada";
-          photo.done = true;
-        } catch (e) {
-          photo.result = `Falha: ${explanation(e)}`;
-          if (path) await db().storage.from("product-images").remove([path]);
-        }
-        setPhotos([...results]);
-      }
-      setNotice(
-        "Envio concluído. Arquivos sem correspondência foram mantidos fora da importação. Confira o relatório.",
-      );
-    } catch (e) {
-      setError(explanation(e));
-    } finally {
-      setBusy(false);
-      setProgress("");
-    }
-  }
   function report() {
-    const data: Record<string, string | number>[] = rows.length
-      ? rows.map((r) => ({
-          linha: r.line,
-          ...r.values,
-          resultado: r.error || r.result || "Pendente",
-        }))
-      : photos.map((p) => ({
-          arquivo: p.file.name,
-          codigo: p.code,
-          resultado: p.error || p.result || "Pendente",
-        }));
+    const data = rows.map((r) => ({
+      linha: r.line,
+      ...r.values,
+      resultado: r.error || r.result || "Pendente",
+    }));
     downloadFile(
       "relatorio-importacao.csv",
       new Blob(
@@ -268,7 +171,7 @@ export default function Imports({
     );
   }
   const errors = rows.filter((r) => r.error).length;
-  const photoErrors = photos.filter((p) => p.error).length;
+  const blocked = busy || photoBusy;
   return (
     <>
       <div className="page-heading">
@@ -293,7 +196,7 @@ export default function Imports({
           {progress || "Preparando…"} Mantenha esta página aberta.
         </div>
       )}
-      <section className="panel import-panel">
+      <section className="panel import-panel" inert={photoBusy}>
         <h2>1. Planilhas de cadastros e kits</h2>
         <p>
           Importe primeiro produtos e componentes; depois as composições. Excel
@@ -305,11 +208,10 @@ export default function Imports({
             Dados
             <select
               value={kind}
-              disabled={busy}
+              disabled={blocked}
               onChange={(e) => {
                 setKind(e.target.value as ImportKind);
                 setRows([]);
-                setPhotos([]);
                 setNotice("");
                 setError("");
                 setFilename("");
@@ -324,7 +226,7 @@ export default function Imports({
             <>
               <button
                 className="secondary"
-                disabled={busy}
+                disabled={blocked}
                 onClick={async () => {
                   setBusy(true);
                   try {
@@ -339,13 +241,13 @@ export default function Imports({
                 <Download size={19} />
                 Baixar modelo Excel
               </button>
-              <label className={`upload-button ${busy ? "disabled" : ""}`}>
+              <label className={`upload-button ${blocked ? "disabled" : ""}`}>
                 <FileUp size={20} />
                 Selecionar planilha
                 <input
                   type="file"
                   accept=".xlsx,.csv"
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     e.target.value = "";
@@ -386,7 +288,7 @@ export default function Imports({
                     <input
                       type="checkbox"
                       checked={update}
-                      disabled={busy}
+                      disabled={blocked}
                       onChange={(e) => setUpdate(e.target.checked)}
                     />
                     Atualizar descrição, tipo e status de códigos já
@@ -429,14 +331,16 @@ export default function Imports({
                 <div className="panel-actions">
                   <button
                     className="secondary"
-                    disabled={busy}
+                    disabled={blocked}
                     onClick={report}
                   >
                     Baixar relatório
                   </button>
                   <button
                     className="primary"
-                    disabled={busy || errors > 0 || rows.every((r) => r.done)}
+                    disabled={
+                      blocked || errors > 0 || rows.every((r) => r.done)
+                    }
                     onClick={importData}
                   >
                     Confirmar importação
@@ -447,88 +351,7 @@ export default function Imports({
           </>
         )}
       </section>
-      <section className="panel import-panel">
-        <h2>2. Fotos por código do produto</h2>
-        <p>
-          Cadastre os produtos antes. Nomeie cada imagem com o código exato:{" "}
-          <strong>00123.jpg</strong> corresponde ao produto{" "}
-          <strong>00123</strong>. JPG, PNG ou WebP, até 5 MB por foto e 500
-          arquivos por lote.
-        </p>
-        <label className="upload-button">
-          <Images size={20} />
-          Selecionar fotos
-          <input
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp"
-            disabled={busy}
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              e.target.value = "";
-              if (files.length) void analyzePhotos(files);
-            }}
-          />
-        </label>
-        {photos.length > 0 && (
-          <>
-            <p>
-              {photos.length} arquivos · {photoErrors} sem associação válida.
-            </p>
-            <label className="import-choice">
-              <input
-                type="checkbox"
-                checked={replacePhotos}
-                disabled={busy}
-                onChange={(e) => setReplacePhotos(e.target.checked)}
-              />
-              Substituir fotos dos produtos que já possuem imagem.
-            </label>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Arquivo</th>
-                    <th>Código</th>
-                    <th>Produto</th>
-                    <th>Resultado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {photos.slice(0, 100).map((p, i) => (
-                    <tr key={i}>
-                      <td>{p.file.name}</td>
-                      <td>{p.code}</td>
-                      <td>{p.target?.description ?? "—"}</td>
-                      <td>
-                        {p.error ||
-                          p.result ||
-                          (p.target?.image_url ? "Já tem foto" : "Pronta")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p>
-              Fotos inválidas serão ignoradas. A prévia exibe até 100 arquivos;
-              o relatório inclui todos.
-            </p>
-            <div className="panel-actions">
-              <button className="secondary" disabled={busy} onClick={report}>
-                Baixar relatório
-              </button>
-              <button
-                className="primary"
-                disabled={busy || !photos.some((p) => !p.error && !p.done)}
-                onClick={importPhotos}
-              >
-                Confirmar envio das fotos
-              </button>
-            </div>
-          </>
-        )}
-      </section>
+      <PhotoImport onBusy={setPhotoBusy} disabled={busy} />
     </>
   );
 }

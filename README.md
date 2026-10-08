@@ -185,8 +185,8 @@ A área **Importações** está disponível apenas para administradores. Ela usa
 3. Importe produtos e componentes antes das composições. Confira a prévia; erros e duplicidades precisam ser corrigidos antes da gravação.
 4. Confirme a importação. Por padrão, códigos já cadastrados são ignorados; marque a opção de atualização para alterar descrição, tipo e status. Fotos são preservadas. Status vazio mantém o cadastro existente e cria registros novos ativos.
 5. Para composições, a primeira coluna contém o código do produto; todas as demais contêm códigos de componentes, com quantidade variável de colunas. Células vazias são ignoradas; produtos podem aparecer em várias linhas. Apenas pares produto/componente repetidos são duplicidades. A prévia identifica novos vínculos, existentes, códigos ausentes e inativos. Confirme para adicionar somente os vínculos válidos, com quantidade 1, sem alterar relações ou quantidades existentes. O editor manual em Composições continua sendo a ação explícita para editar/remover itens.
-6. Para fotos, selecione vários arquivos JPG/PNG/WebP (até 5 MB cada, máximo 500 por lote). O nome sem extensão deve corresponder ao código exato: 00123.jpg para 00123. Fotos sem produto correspondente, com formato inválido ou código duplicado no lote são ignoradas e aparecem no relatório. Fotos existentes só são substituídas quando essa opção é marcada. Arquivos antigos permanecem privados, sujeitos à política de remoção de órfãos.
-7. Baixe o relatório CSV com o resultado de todas as linhas ou fotos. A prévia mostra as primeiras 100 entradas. Cada cadastro/foto é gravado separadamente e cada composição é salva em transação própria; uma falha não desfaz gravações anteriores. A tela permite tentar novamente somente as entradas com falha. Não feche a página durante o processamento.
+6. Para fotos, use **Produtos → Importar imagens** ou a seção de fotos em Importações. Selecione um ZIP ou arquivos JPG/PNG/WebP. Veja as regras e limites na seção “Importação flexível de imagens” abaixo.
+7. Baixe o relatório CSV com o resultado de todas as linhas ou fotos. A prévia de cadastros mostra as primeiras 100 entradas; a prévia de imagens permite navegar por todas em páginas de 100. Cada cadastro/foto é gravado separadamente e cada composição é salva em transação própria; uma falha não desfaz gravações anteriores. Não feche a página durante o processamento.
 
 Cabeçalhos: produtos `codigo, descricao, ativo`; componentes `codigo, tipo, descricao, ativo`; kits, por exemplo, `CODIGO_PRODUTO, COMPONENTE_1, COMPONENTE_2, ...`. Nos kits a posição das colunas determina a interpretação, independente do nome do cabeçalho. O campo ativo dos cadastros aceita sim/não, true/false, 1/0 ou ativo/inativo. Fórmulas em XLSX são rejeitadas; converta-as em valores antes de importar.
 
@@ -216,7 +216,19 @@ Aplicar a migração `202610080001_product_deletion.sql` antes de publicar esta 
 - Em Composições, a lixeira confirma e exclui somente o vínculo selecionado. Salve alterações pendentes antes de excluir vínculos existentes. Itens ainda não salvos são removidos apenas da edição.
 - Fotos compartilhadas são preservadas. Fotos exclusivas são removidas pela API do Storage; falhas ficam registradas numa fila privada e podem ser tentadas novamente ao abrir Produtos ou pelo botão de nova tentativa.
 - As funções conferem o acesso administrativo no servidor. A exclusão de produto é rejeitada se o cadastro ou o total de vínculos mudou após a prévia. Exclusões diretas nas tabelas continuam bloqueadas.
-- Nenhuma alteração na regra de associação de nomes de arquivos de fotos foi incluída nesta atualização.
+- A exclusão preserva os históricos, inclusive a referência textual de produtos excluídos nas importações de imagens.
+
+### Importação flexível de imagens
+
+Aplicar `supabase/migrations/20261008143847_photo_import.sql` após as migrações anteriores e antes de publicar o frontend.
+
+- **Produtos → Importar imagens** aceita um ZIP de até 100 MB ou imagens avulsas; até 5.000 arquivos, 5 MB por foto e 200 MB extraídos. Arquivos ocultos e metadados do macOS são ignorados. Formatos inválidos aparecem no relatório. A extração limita os bytes descomprimidos efetivamente lidos, sem extrair para o disco.
+- Correspondência exata sempre vence. As regras selecionáveis são: exata, remover N final da imagem, remover último caractere, remover primeiro caractere, normalização controlada e personalizada. Normalização testa as transformações separadamente e exige um único produto distinto. Personalizada remove a quantidade explicitamente escolhida no início e/ou final. Maiúsculas, minúsculas e zeros são preservados; códigos oficiais não são modificados.
+- A prévia mostra arquivo, código identificado, produto, regra realmente aplicada e status. “Escolher produto” permite vínculo manual por busca. Produtos já fotografados exigem manter, substituir ou cancelar esse arquivo. Fotos concorrentes para o mesmo produto precisam ser resolvidas antes de confirmar.
+- Produtos são lidos em páginas uma única vez por análise. O envio sequencial limita memória e carga; pode ser interrompido após o arquivo em andamento. Repetir arquivos pendentes usa recibos idempotentes; para modificar uma prévia já iniciada, use “Analisar novamente”. Uma mudança na foto do produto após a prévia impede a substituição.
+- As tabelas de histórico têm RLS, leitura apenas administrativa e mutações por funções com autorização própria e search_path fixo. O vínculo e seu recibo são gravados na mesma transação. Fotos antigas exclusivas entram na fila de limpeza já existente; fotos compartilhadas são preservadas. O bucket privado product-images e suas políticas são reutilizados.
+- “Histórico de imagens” mostra as últimas 20 importações com contagens por resultado e CSV de todas as entradas, incluindo a regra efetivamente usada. Vínculos manuais aparecem como manual. Não encontrados, ambíguos e inválidos não são vinculados automaticamente.
+- Validação: 58 testes automatizados e compilação aprovados. Inclui os quatro exemplos de N adicional, exata prioritária, ambiguidade, regras sem encadeamento, ZIP com expansão acima do limite, RLS, conflito de prévia, recibos idempotentes e preservação do código/histórico. O upload autenticado de um ZIP real ainda deve ser conferido no ambiente publicado.
 
 ### Recuperação e redefinição de senha
 

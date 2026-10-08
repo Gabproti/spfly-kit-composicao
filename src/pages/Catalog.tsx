@@ -31,7 +31,13 @@ const blank: Draft = {
   image_url: null,
   active: true,
 };
-export default function Catalog({ kind }: { kind: "products" | "components" }) {
+export default function Catalog({
+  kind,
+  onImportImages,
+}: {
+  kind: "products" | "components";
+  onImportImages?: () => void;
+}) {
   const components = kind === "components";
   const noun = components ? "componente" : "produto";
   const [rows, setRows] = useState<(Product | Component)[]>([]);
@@ -244,6 +250,11 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
               : "Gerencie os produtos e suas fotos de referência."}
           </p>
         </div>
+        {!components && onImportImages && (
+          <button className="secondary" onClick={onImportImages}>
+            Importar imagens
+          </button>
+        )}
         <button className="primary" onClick={() => edit()}>
           <Plus size={20} />
           Novo {noun}

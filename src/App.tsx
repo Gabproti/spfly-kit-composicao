@@ -31,6 +31,7 @@ const UserManagement = lazy(() => import("./pages/Users"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const History = lazy(() => import("./pages/History"));
 const Imports = lazy(() => import("./pages/Imports"));
+const PhotoImport = lazy(() => import("./pages/PhotoImport"));
 const ComponentTypes = lazy(() => import("./pages/ComponentTypes"));
 import Brand from "./components/Brand";
 import { connectionMessage, withTimeout } from "./lib/connection";
@@ -250,7 +251,10 @@ export default function App() {
         <header className="topbar">
           {admin ? (
             <span className="breadcrumb">
-              SPFLY <span>/</span> {nav.find((n) => n.id === page)?.label}
+              SPFLY <span>/</span>{" "}
+              {page === "photo-import"
+                ? "Produtos / Importar imagens"
+                : nav.find((n) => n.id === page)?.label}
             </span>
           ) : (
             <Brand compact dark />
@@ -285,7 +289,15 @@ export default function App() {
             ) : page === "dashboard" ? (
               <Dashboard navigate={setPage} />
             ) : page === "products" ? (
-              <Catalog kind="products" />
+              <Catalog
+                kind="products"
+                onImportImages={() => setPage("photo-import")}
+              />
+            ) : page === "photo-import" ? (
+              <PhotoImport
+                onBusy={setImporting}
+                onBack={() => setPage("products")}
+              />
             ) : page === "components" ? (
               <Catalog kind="components" />
             ) : page === "component-types" ? (

@@ -14,6 +14,9 @@ importers:
       exceljs:
         specifier: 4.4.0
         version: 4.4.0
+      jszip:
+        specifier: 3.10.2
+        version: 3.10.2
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.3.0)
