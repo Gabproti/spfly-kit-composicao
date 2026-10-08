@@ -207,3 +207,24 @@ Aplique `supabase/migrations/202610070002_optional_description.sql` para permiti
 
 ### Tipos de componentes
 Aplique `supabase/migrations/202610070003_component_types.sql` após as anteriores. A lista fixa foi migrada para `component_types`, mantendo os oito tipos existentes. Administradores criam tipos em **Tipos de componentes**. Componentes aceitam tipo em branco/nulo, inclusive importação sem coluna `tipo`; a classificação pode ser feita depois em **Componentes → Editar → Tipo**. Tipos informados na planilha precisam estar cadastrados. Omitir a coluna ao atualizar preserva a classificação existente; uma célula vazia explícita remove a classificação. RLS bloqueia criação por operadores/inativos/anônimos, e a FK impede tipos inexistentes. Tipos sem classificação aparecem como “Sem tipo” e continuam disponíveis na consulta de kits.
+
+### Exclusões administrativas
+
+Aplicar a migração `202610080001_product_deletion.sql` antes de publicar esta atualização.
+
+- Em Produtos, Excluir abre uma confirmação com o código, o total de vínculos e o impacto na foto. Excluir definitivamente remove apenas o produto e seus vínculos; componentes e histórico de consultas são preservados.
+- Em Composições, a lixeira confirma e exclui somente o vínculo selecionado. Salve alterações pendentes antes de excluir vínculos existentes. Itens ainda não salvos são removidos apenas da edição.
+- Fotos compartilhadas são preservadas. Fotos exclusivas são removidas pela API do Storage; falhas ficam registradas numa fila privada e podem ser tentadas novamente ao abrir Produtos ou pelo botão de nova tentativa.
+- As funções conferem o acesso administrativo no servidor. A exclusão de produto é rejeitada se o cadastro ou o total de vínculos mudou após a prévia. Exclusões diretas nas tabelas continuam bloqueadas.
+- Nenhuma alteração na regra de associação de nomes de arquivos de fotos foi incluída nesta atualização.
+
+### Recuperação e redefinição de senha
+
+- Login: Esqueci minha senha envia o link de recuperação para o e-mail informado. A resposta não confirma se a conta existe.
+- O link abre a tela Redefinir senha; a senha deve ter entre 12 e 128 caracteres e a confirmação deve coincidir. Links inválidos ou expirados não habilitam a alteração. Ao concluir, o usuário volta ao login.
+- Usuários → Redefinir senha permite solicitar o link por e-mail ou definir uma nova senha diretamente, com confirmação. A alteração direta usa a função admin-users, que valida a sessão e o perfil administrativo ativo antes de chamar a API administrativa do Auth. Não modifica perfil, e-mail ou status de ativação.
+- Publicar novamente `supabase/functions/admin-users/index.ts`. A chave de serviço permanece apenas no servidor; manter os segredos e a configuração de CORS existentes. A função continua aceitando o cadastro de novos usuários.
+- Em Supabase Auth → URL Configuration, manter a Site URL `https://gabproti.github.io/spfly-kit-composicao/` e permitir essa URL de retorno (também `http://127.0.0.1:5173/` para desenvolvimento).
+- Validar a entrega de e-mails de recuperação no ambiente publicado. Se o projeto estiver usando o serviço padrão do Supabase com restrição de destinatários ou limite de envio, configurar SMTP próprio no painel antes de oferecer recuperação para todos os usuários. Não incluir credenciais SMTP no frontend ou neste repositório.
+- Referência do fluxo Auth: [resetPasswordForEmail](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail).
+- Os testes automatizados simulam a função administrativa e validam os bloqueios de acesso; não enviam e-mails nem alteram senhas de contas reais.

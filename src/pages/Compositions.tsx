@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import type { Product, Component, CompositionItem } from "../lib/types";
-import { Empty, ProductImage, message } from "../components/UI";
+import { Empty, Modal, ProductImage, message } from "../components/UI";
 export default function Compositions() {
   const [products, setProducts] = useState<Product[]>([]);
   const [components, setComponents] = useState<Component[]>([]);
@@ -14,6 +14,11 @@ export default function Compositions() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [persisted, setPersisted] = useState<string[]>([]);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const closeRemoval = useCallback(() => {
+    if (!busy) setRemoving(null);
+  }, [busy]);
   useEffect(() => {
     Promise.all([
       db().from("products").select("*").order("code"),
@@ -33,6 +38,7 @@ export default function Compositions() {
     setSelected("");
     setNotice("");
     setDirty(false);
+    setPersisted([]);
     if (!productId) return;
     setLoading(true);
     db()
@@ -44,7 +50,10 @@ export default function Compositions() {
         if (!live) return;
         setLoading(false);
         if (error) setError("Não foi possível carregar a composição.");
-        else setItems(data ?? []);
+        else {
+          setItems(data ?? []);
+          setPersisted((data ?? []).map((item) => item.component_id));
+        }
       });
     return () => {
       live = false;
@@ -91,6 +100,7 @@ export default function Compositions() {
       fail(error);
       setNotice("Composição salva com sucesso.");
       setDirty(false);
+      setPersisted(items.map((item) => item.component_id));
     } catch (e) {
       setError(message(e));
     } finally {
@@ -98,6 +108,52 @@ export default function Compositions() {
     }
   }
   const product = products.find((p) => p.id === productId);
+  async function removeLink() {
+    if (!removing || !productId || busy) return;
+    if (!persisted.includes(removing)) {
+      setItems(items.filter((item) => item.component_id !== removing));
+      setDirty(true);
+      setRemoving(null);
+      return;
+    }
+    if (dirty) {
+      setError(
+        "Salve as alterações antes de excluir um vínculo já cadastrado.",
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const r = await db().rpc("admin_delete_kit_link", {
+        p_product_id: productId,
+        p_component_id: removing,
+      });
+      fail(r.error);
+      setRemoving(null);
+      setItems(items.filter((item) => item.component_id !== removing));
+      setPersisted(persisted.filter((id) => id !== removing));
+      const current = await db()
+        .from("compositions")
+        .select("component_id,quantity")
+        .eq("product_id", productId)
+        .order("position");
+      fail(current.error);
+      setItems(current.data ?? []);
+      setPersisted((current.data ?? []).map((item) => item.component_id));
+      setDirty(false);
+      setNotice(
+        "Vínculo excluído. O produto e o componente foram preservados.",
+      );
+    } catch {
+      setError(
+        "Não foi possível concluir. Atualize a composição para conferir o vínculo antes de tentar novamente.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   const available = components.filter(
     (c) => c.active && !items.some((i) => i.component_id === c.id),
   );
@@ -197,7 +253,7 @@ export default function Compositions() {
                       <th>Código</th>
                       <th>Descrição</th>
                       <th>Quantidade</th>
-                      <th>Remover</th>
+                      <th>Excluir vínculo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -244,12 +300,13 @@ export default function Compositions() {
                           <td>
                             <button
                               className="icon-button danger"
-                              disabled={busy}
-                              aria-label={`Remover ${c?.description}`}
+                              disabled={
+                                busy ||
+                                (dirty && persisted.includes(i.component_id))
+                              }
+                              aria-label={`Excluir vínculo de ${c?.code}`}
                               onClick={() => {
-                                setItems(items.filter((_, n) => n !== index));
-                                setDirty(true);
-                                setNotice("");
+                                setRemoving(i.component_id);
                               }}
                             >
                               <Trash2 size={20} />
@@ -272,7 +329,7 @@ export default function Compositions() {
                   {!items.length
                     ? "Sem componentes, o kit não aparece na consulta."
                     : dirty
-                      ? "Alterações ainda não salvas."
+                      ? "Salve as alterações antes de excluir vínculos já cadastrados."
                       : "Os componentes serão apresentados nesta ordem."}
                 </small>
                 <button
@@ -294,6 +351,41 @@ export default function Compositions() {
             </>
           )}
         </section>
+      )}
+      {removing && (
+        <Modal title="Excluir componente da composição?" close={closeRemoval}>
+          <p>
+            Produto: <strong className="mono">{product?.code}</strong>
+          </p>
+          <p>
+            Componente:{" "}
+            <strong className="mono">
+              {components.find((item) => item.id === removing)?.code}
+            </strong>
+          </p>
+          <p>
+            Somente este vínculo será removido. O produto, o componente e os
+            demais vínculos serão preservados.
+          </p>
+          {!persisted.includes(removing) && (
+            <p>
+              Este item ainda não foi salvo; será removido apenas da edição
+              atual.
+            </p>
+          )}
+          <div className="modal-actions">
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={closeRemoval}
+            >
+              Cancelar
+            </button>
+            <button className="primary" disabled={busy} onClick={removeLink}>
+              {busy ? "Excluindo…" : "Excluir vínculo"}
+            </button>
+          </div>
+        </Modal>
       )}
     </>
   );

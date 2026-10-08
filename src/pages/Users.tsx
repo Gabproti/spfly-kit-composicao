@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Plus, Pencil, Search } from "lucide-react";
+import { Plus, Pencil, Search, KeyRound } from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import type { Profile, Role } from "../lib/types";
 import { Empty, Modal, Status, message } from "../components/UI";
+import { passwordError, passwordResetUrl } from "../lib/passwordRecovery";
+import { withTimeout } from "../lib/connection";
 type UserDraft = {
   id?: string;
   name: string;
@@ -24,6 +26,77 @@ export default function UserManagement({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resetUser, setResetUser] = useState<Profile | null>(null);
+  const [resetMode, setResetMode] = useState<"email" | "direct">("email");
+  const [newPassword, setNewPassword] = useState(""),
+    [confirmation, setConfirmation] = useState("");
+  const [resetError, setResetError] = useState("");
+  const closeReset = useCallback(() => {
+    if (!busy) {
+      setResetUser(null);
+      setNewPassword("");
+      setConfirmation("");
+    }
+  }, [busy]);
+  async function resetPassword(event: FormEvent) {
+    event.preventDefault();
+    if (!resetUser || busy) return;
+    setResetError("");
+    if (resetMode === "direct") {
+      const invalid = passwordError(newPassword, confirmation);
+      if (invalid) {
+        setResetError(invalid);
+        return;
+      }
+    }
+    setBusy(true);
+    setNotice("");
+    try {
+      if (resetMode === "email") {
+        const result = await withTimeout(
+          db().auth.resetPasswordForEmail(resetUser.email, {
+            redirectTo: passwordResetUrl(
+              location.origin,
+              import.meta.env.BASE_URL,
+            ),
+          }),
+          20000,
+        );
+        if (result.error) throw result.error;
+      } else {
+        const result = await withTimeout(
+          db().functions.invoke("admin-users", {
+            body: {
+              action: "reset-password",
+              user_id: resetUser.id,
+              password: newPassword,
+            },
+          }),
+          20000,
+        );
+        if (result.error || result.data?.error)
+          throw new Error(
+            result.data?.error ?? "Falha na função administrativa.",
+          );
+      }
+      setNotice(
+        resetMode === "email"
+          ? `Link de redefinição solicitado para ${resetUser.email}. Peça ao usuário que confira o e-mail e o spam.`
+          : `Senha de ${resetUser.name} redefinida. Informe a nova senha ao usuário por um canal privado.`,
+      );
+      setResetUser(null);
+      setNewPassword("");
+      setConfirmation("");
+    } catch {
+      setResetError(
+        resetMode === "email"
+          ? "Não foi possível enviar o link. Aguarde um minuto e tente novamente."
+          : "Não foi possível redefinir a senha. Confira os requisitos da senha e se a atualização da função admin-users foi publicada.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -183,6 +256,20 @@ export default function UserManagement({
                         <Pencil size={16} />
                         Editar
                       </button>
+                      <button
+                        className="secondary small"
+                        disabled={busy}
+                        onClick={() => {
+                          setResetUser(u);
+                          setResetMode("email");
+                          setResetError("");
+                          setNewPassword("");
+                          setConfirmation("");
+                        }}
+                      >
+                        <KeyRound size={16} />
+                        Redefinir senha
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -286,6 +373,95 @@ export default function UserManagement({
               </button>
               <button className="primary" disabled={busy}>
                 {busy ? "Salvando…" : "Salvar usuário"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {resetUser && (
+        <Modal title="Redefinir senha do usuário" close={closeReset}>
+          <form onSubmit={resetPassword}>
+            <p>
+              <strong>{resetUser.name}</strong>
+              <br />
+              {resetUser.email}
+            </p>
+            {resetError && (
+              <div className="notice error" role="alert">
+                {resetError}
+              </div>
+            )}
+            <label>
+              Como redefinir
+              <select
+                value={resetMode}
+                disabled={busy}
+                onChange={(e) => {
+                  setResetMode(e.target.value as "email" | "direct");
+                  setResetError("");
+                  setNewPassword("");
+                  setConfirmation("");
+                }}
+              >
+                <option value="email">Enviar link por e-mail</option>
+                <option value="direct">Definir uma nova senha</option>
+              </select>
+            </label>
+            {resetMode === "email" ? (
+              <p>
+                O usuário receberá um link para escolher a própria senha. O
+                perfil e o status do acesso serão preservados.
+              </p>
+            ) : (
+              <>
+                <label>
+                  Nova senha
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    disabled={busy}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Confirmar nova senha
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    disabled={busy}
+                    value={confirmation}
+                    onChange={(e) => setConfirmation(e.target.value)}
+                  />
+                </label>
+                <p>
+                  A senha atual será substituída. Use de 12 a 128 caracteres e
+                  informe a nova senha ao usuário por um canal privado. Esta
+                  alteração não ativa um acesso inativo.
+                </p>
+              </>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={closeReset}
+              >
+                Cancelar
+              </button>
+              <button className="primary" disabled={busy}>
+                {busy
+                  ? "Processando…"
+                  : resetMode === "email"
+                    ? "Enviar link"
+                    : "Confirmar redefinição"}
               </button>
             </div>
           </form>

@@ -4,21 +4,59 @@ import { LockKeyhole, Eye, EyeOff, PackageCheck } from "lucide-react";
 import { db } from "../lib/supabase";
 import Brand from "../components/Brand";
 import { connectionMessage, withTimeout } from "../lib/connection";
-export default function Login({ sessionError = "" }: { sessionError?: string }) {
+import { passwordResetUrl } from "../lib/passwordRecovery";
+export default function Login({
+  sessionError = "",
+}: {
+  sessionError?: string;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [notice, setNotice] = useState("");
+  async function recover(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await withTimeout(
+        db().auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: passwordResetUrl(
+            location.origin,
+            import.meta.env.BASE_URL,
+          ),
+        }),
+        20000,
+      );
+      if (result.error) throw result.error;
+      setNotice(
+        "Se este e-mail estiver cadastrado, você receberá um link para escolher uma nova senha. Confira também o spam.",
+      );
+    } catch {
+      setError(
+        "Não foi possível enviar o link agora. Aguarde um minuto e tente novamente.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   async function login(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const { error } = await withTimeout(db().auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      }), 20000);
+      const { error } = await withTimeout(
+        db().auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        }),
+        20000,
+      );
       if (error)
         setError(
           error.code === "invalid_credentials"
@@ -55,12 +93,21 @@ export default function Login({ sessionError = "" }: { sessionError?: string }) 
         <small>Consulta e composição de kits · SPFLY</small>
       </section>
       <section className="login-form">
-        <form onSubmit={login}>
+        <form onSubmit={recovering ? recover : login}>
           <span className="form-icon">
             <LockKeyhole size={25} />
           </span>
-          <h2>Bem-vindo à operação</h2>
-          <p>Entre com seu acesso para continuar.</p>
+          <h2>{recovering ? "Recuperar senha" : "Bem-vindo à operação"}</h2>
+          <p>
+            {recovering
+              ? "Informe seu e-mail para receber o link de redefinição."
+              : "Entre com seu acesso para continuar."}
+          </p>
+          {notice && (
+            <div className="notice success" role="status">
+              {notice}
+            </div>
+          )}
           {(error || sessionError) && (
             <div className="notice error" role="alert">
               {error || sessionError}
@@ -78,29 +125,50 @@ export default function Login({ sessionError = "" }: { sessionError?: string }) 
               placeholder="seu.email@empresa.com"
             />
           </label>
-          <label>
-            Senha
-            <div className="password-input">
-              <input
-                type={visible ? "text" : "password"}
-                autoComplete="current-password"
-                minLength={1}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Digite sua senha"
-              />
-              <button
-                type="button"
-                aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
-                onClick={() => setVisible(!visible)}
-              >
-                {visible ? <EyeOff size={21} /> : <Eye size={21} />}
-              </button>
-            </div>
-          </label>
+          {!recovering && (
+            <label>
+              Senha
+              <div className="password-input">
+                <input
+                  type={visible ? "text" : "password"}
+                  autoComplete="current-password"
+                  minLength={1}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Digite sua senha"
+                />
+                <button
+                  type="button"
+                  aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
+                  onClick={() => setVisible(!visible)}
+                >
+                  {visible ? <EyeOff size={21} /> : <Eye size={21} />}
+                </button>
+              </div>
+            </label>
+          )}
           <button className="primary login-button" disabled={busy}>
-            {busy ? "Entrando…" : "ENTRAR"}
+            {busy
+              ? recovering
+                ? "Enviando…"
+                : "Entrando…"
+              : recovering
+                ? "Enviar link de recuperação"
+                : "ENTRAR"}
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setRecovering(!recovering);
+              setError("");
+              setNotice("");
+              setPassword("");
+            }}
+          >
+            {recovering ? "Voltar ao login" : "Esqueci minha senha"}
           </button>
           <div className="login-help">
             Precisa de acesso? Procure o administrador.

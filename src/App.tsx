@@ -12,7 +12,16 @@ import {
   FileUp,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
-import { configured, db, fail, supabase } from "./lib/supabase";
+import {
+  configured,
+  db,
+  fail,
+  supabase,
+  recoveryRequested,
+  recoveryLinkError,
+} from "./lib/supabase";
+import { isRecoverySession, rememberRecovery } from "./lib/passwordRecovery";
+import ResetPassword from "./pages/ResetPassword";
 import type { Profile } from "./lib/types";
 import Login from "./pages/Login";
 const Consult = lazy(() => import("./pages/Consult"));
@@ -43,6 +52,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [page, setPage] = useState("dashboard");
   const [importing, setImporting] = useState(false);
+  const [recovering, setRecovering] = useState(recoveryRequested);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
   const loadProfile = useCallback(async (userId: string) => {
     const { data, error } = await withTimeout(
       db().from("profiles").select("*").eq("id", userId).single(),
@@ -57,6 +68,8 @@ export default function App() {
     let live = true;
     let revision = 0;
     let readyUser: string | null = null;
+    let recovery = recoveryRequested;
+    let recoveryUserId: string | null = null;
     const startupTimer = setTimeout(() => {
       if (!live) return;
       setError(connectionMessage);
@@ -94,6 +107,30 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((event, next) => {
       setTimeout(() => {
         if (!live) return;
+        if (
+          !recoveryLinkError &&
+          (event === "PASSWORD_RECOVERY" ||
+            (next && isRecoverySession(next.user.id)))
+        ) {
+          recovery = true;
+          setRecovering(true);
+          if (next) {
+            recoveryUserId = next.user.id;
+            rememberRecovery(next.user.id);
+          }
+        }
+        if (recovery) {
+          clearTimeout(startupTimer);
+          ++revision;
+          readyUser = null;
+          setSession(next);
+          setHasRecoverySession(
+            Boolean(next && next.user.id === recoveryUserId),
+          );
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
         // Token refresh and repeated sign-in notifications must not unmount
         // a working screen (including an import in progress).
         if (
@@ -151,6 +188,18 @@ export default function App() {
         <div className="spinner" />
         <p>Validando acesso…</p>
       </div>
+    );
+  if (recovering)
+    return (
+      <ResetPassword
+        hasSession={hasRecoverySession && Boolean(session)}
+        onDone={() => {
+          rememberRecovery(null);
+          history.replaceState(null, "", location.pathname + location.search);
+          // Restart Auth initialization after leaving recovery mode.
+          location.reload();
+        }}
+      />
     );
   if (!session) return <Login sessionError={error} />;
   if (!profile)

@@ -46,6 +46,48 @@ Deno.serve(async (req: Request) => {
     return reply({ error: "Acesso administrativo necessário." }, 403);
   try {
     const body = await req.json();
+    if (body.action === "reset-password") {
+      if (
+        typeof body.user_id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          body.user_id,
+        ) ||
+        typeof body.password !== "string" ||
+        body.password.length < 12 ||
+        body.password.length > 128
+      )
+        return reply(
+          {
+            error:
+              "Informe um usuário válido e uma senha entre 12 e 128 caracteres.",
+          },
+          400,
+        );
+      const target = await caller
+        .from("profiles")
+        .select("id")
+        .eq("id", body.user_id)
+        .single();
+      if (target.error || !target.data)
+        return reply({ error: "Usuário não encontrado." }, 404);
+      const admin = createClient(url, serviceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const updated = await admin.auth.admin.updateUserById(body.user_id, {
+        password: body.password,
+      });
+      if (updated.error || !updated.data.user)
+        return reply(
+          {
+            error:
+              "Não foi possível redefinir a senha. Confira os requisitos da senha.",
+          },
+          400,
+        );
+      return reply({ success: true });
+    }
+    if (body.action && body.action !== "create-user")
+      return reply({ error: "Operação inválida." }, 400);
     if (
       typeof body.name !== "string" ||
       body.name.trim().length < 1 ||

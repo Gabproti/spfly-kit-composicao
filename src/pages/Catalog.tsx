@@ -3,6 +3,10 @@ import type { FormEvent } from "react";
 import { Plus, Search, Pencil, ImagePlus, Trash2 } from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import { loadComponentTypes } from "../lib/componentTypes";
+import {
+  cleanupDeletedProductImages,
+  type ProductDeletePreview,
+} from "../lib/productDeletion";
 import type { Product, Component } from "../lib/types";
 import {
   Empty,
@@ -42,6 +46,10 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [changing, setChanging] = useState<string | null>(null);
   const [componentTypes, setComponentTypes] = useState<string[]>([]);
+  const [deletion, setDeletion] = useState<ProductDeletePreview | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [cleanupPending, setCleanupPending] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -62,6 +70,81 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
     setNotice("");
     void load();
   }, [load]);
+  useEffect(() => {
+    if (kind !== "products") return;
+    let live = true;
+    cleanupDeletedProductImages()
+      .then((n) => {
+        if (live) setCleanupPending(n > 0);
+      })
+      .catch(() => {
+        if (live) setCleanupPending(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [kind]);
+  const closeDeletion = useCallback(() => {
+    if (!deleting) setDeletion(null);
+  }, [deleting]);
+  async function askDelete(row: Product) {
+    if (changing || deleting || busy) return;
+    setChanging(row.id);
+    setError("");
+    setDeleteError("");
+    try {
+      const r = await db().rpc("admin_product_delete_preview", {
+        p_product_id: row.id,
+      });
+      fail(r.error);
+      setDeletion(r.data as ProductDeletePreview);
+    } catch {
+      setError(
+        "Não foi possível conferir os impactos da exclusão. Tente novamente.",
+      );
+    } finally {
+      setChanging(null);
+    }
+  }
+  async function deleteProduct() {
+    if (!deletion || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const r = await db().rpc("admin_delete_product", {
+        p_product_id: deletion.id,
+        p_expected_updated_at: deletion.updated_at,
+        p_expected_links: deletion.links,
+      });
+      if (r.error) throw new Error(r.error.message);
+      setDeletion(null);
+      setNotice(
+        `Produto ${deletion.code} excluído. Os componentes foram preservados.`,
+      );
+      try {
+        setCleanupPending((await cleanupDeletedProductImages()) > 0);
+      } catch {
+        setCleanupPending(true);
+      }
+      await load();
+    } catch (e) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Não foi possível excluir o produto.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+  async function retryCleanup() {
+    setChanging("cleanup");
+    try {
+      setCleanupPending((await cleanupDeletedProductImages()) > 0);
+    } catch {
+      setCleanupPending(true);
+    } finally {
+      setChanging(null);
+    }
+  }
   useEffect(() => {
     if (!file) {
       setPreview(null);
@@ -177,6 +260,19 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
         </div>
       )}
       <section className="panel">
+        {!components && cleanupPending && (
+          <div className="notice" role="status">
+            Há fotos de produtos excluídos aguardando remoção do Storage. A
+            tentativa será retomada ao abrir Produtos.{" "}
+            <button
+              className="secondary small"
+              disabled={changing !== null || deleting}
+              onClick={retryCleanup}
+            >
+              Tentar remover fotos novamente
+            </button>
+          </div>
+        )}
         <div className="toolbar">
           <div className="filter-field">
             <Search size={20} />
@@ -241,6 +337,16 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
                         >
                           {row.active ? "Inativar" : "Ativar"}
                         </button>
+                        {!components && (
+                          <button
+                            className="text-button danger"
+                            disabled={changing !== null || deleting}
+                            onClick={() => askDelete(row)}
+                          >
+                            <Trash2 size={16} />
+                            Excluir
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -364,6 +470,58 @@ export default function Catalog({ kind }: { kind: "products" | "components" }) {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+      {deletion && (
+        <Modal title="Excluir produto?" close={closeDeletion}>
+          {deleteError && (
+            <div className="notice error" role="alert">
+              {deleteError}
+            </div>
+          )}
+          <p>
+            Deseja realmente excluir o produto{" "}
+            <strong className="mono">{deletion.code}</strong>?
+          </p>
+          <p>
+            Este produto possui {deletion.links} componentes vinculados e{" "}
+            {deletion.image_path
+              ? "1 imagem cadastrada"
+              : "nenhuma imagem cadastrada"}
+            .
+          </p>
+          <p>
+            A exclusão também removerá os vínculos da composição deste produto.
+            Os componentes continuarão cadastrados e disponíveis para outros
+            kits.
+          </p>
+          {deletion.image_path && (
+            <p>
+              {deletion.image_shared
+                ? "A imagem está em uso por outro cadastro e será preservada."
+                : "A imagem exclusiva também será removida do Storage. Se houver falha de conexão, a remoção ficará pendente para nova tentativa."}
+            </p>
+          )}
+          <p>
+            O histórico das consultas será preservado. Esta ação não poderá ser
+            desfeita.
+          </p>
+          <div className="modal-actions">
+            <button
+              className="secondary"
+              disabled={deleting}
+              onClick={closeDeletion}
+            >
+              Cancelar
+            </button>
+            <button
+              className="primary"
+              disabled={deleting}
+              onClick={deleteProduct}
+            >
+              {deleting ? "Excluindo…" : "Excluir definitivamente"}
+            </button>
+          </div>
         </Modal>
       )}
     </>

@@ -1380,3 +1380,8 @@ tr:last-child td {
 .import-panel .toolbar label select {
   margin-left: 10px;
 }
+/* Recovery uses the existing form and notice styles. */
+.reset-password-form {
+  width: min(100%, 420px);
+  text-align: left;
+}
