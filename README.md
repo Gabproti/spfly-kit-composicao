@@ -231,7 +231,20 @@ Aplicar `supabase/migrations/20261008143847_photo_import.sql` após as migraçõ
 - “Histórico de imagens” mostra as últimas 20 importações com contagens por resultado e CSV de todas as entradas, incluindo a regra efetivamente usada. Vínculos manuais aparecem como manual. Não encontrados, ambíguos e inválidos não são vinculados automaticamente.
 - Validação: 62 testes automatizados e compilação aprovados. Inclui decisões em lote para 2.000 produtos, preservação de arquivos ignorados, envio dos válidos com exclusão de conflitos, os quatro exemplos de N adicional, exata prioritária, ambiguidade, regras sem encadeamento, ZIP com expansão acima do limite, RLS, conflito de prévia, recibos idempotentes e preservação do código/histórico. O upload autenticado de um ZIP real ainda deve ser conferido no ambiente publicado.
 
-### Recuperação e redefinição de senha
+### Componente em todos os produtos com dupla conferência
+
+Aplicar `supabase/migrations/20261019132317_bulk_component.sql` antes de publicar esta funcionalidade.
+
+- Em **Componentes → Editar**, autorize os itens desejados com “Permitir adicionar a todos os produtos”. O campo começa desmarcado em todos os componentes existentes e novos. Salvar essa permissão não altera nenhuma composição. A importação de cadastros preserva a permissão existente.
+- Em **Composições**, habilite “Adicionar um componente a todos os produtos”, selecione um componente ativo autorizado e clique em **1. Conferir impacto**. Alterações locais da composição precisam estar salvas antes.
+- A prévia mostra o componente, total de produtos, novos vínculos, vínculos preservados e produtos inativos incluídos. Inclui todos os produtos já cadastrados, inclusive inativos; não cria uma regra para produtos futuros.
+- Para executar, marque que conferiu a prévia, digite o código exato do componente e clique em **2. Confirmar novos vínculos**. Marcar o primeiro checkbox, abrir a prévia ou cancelar não grava vínculos. A prévia expira em 10 minutos, pertence ao administrador que a criou e é revalidada no banco.
+- Apenas pares ausentes são acrescentados ao final de cada composição, com quantidade 1. Vínculos, posições e quantidades existentes permanecem intactos. A execução é uma transação: erro desfaz o lote inteiro. Repetir a mesma confirmação devolve o recibo anterior, sem duplicar vínculos.
+- Mudanças nos produtos, na autorização do componente ou nos vínculos deste componente invalidam a prévia. O servidor bloqueia operadores, inativos, anônimos, código incorreto e prévia de outro administrador. Prévia/recibo ficam em tabela privada com RLS e sem acesso direto pelo cliente.
+- A tela impede edição concorrente local e navegação enquanto a prévia está aberta ou a execução está em andamento, e recarrega a composição selecionada depois do sucesso. Os catálogos são lidos em páginas para incluir mais de 1.000 cadastros.
+- Testes automatizados: autorização inicialmente desmarcada, dupla conferência no servidor, expiração, mudança desde a prévia, idempotência, rollback integral, preservação de quantidades/posições e inclusão explícita de inativos.
+
+### Recuperação e redefinição de senha (fluxo)
 
 - Login: Esqueci minha senha envia o link de recuperação para o e-mail informado. A resposta não confirma se a conta existe.
 - O link abre a tela Redefinir senha; a senha deve ter entre 12 e 128 caracteres e a confirmação deve coincidir. Links inválidos ou expirados não habilitam a alteração. Ao concluir, o usuário volta ao login.

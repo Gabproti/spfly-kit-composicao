@@ -14,7 +14,7 @@ export type Product = {
   image_url: string | null;
   active: boolean;
 };
-export type Component = Product & { type: string | null };
+export type Component = Product & { type: string | null; allow_bulk: boolean };
 export type CompositionItem = {
   component_id: string;
   quantity: number;

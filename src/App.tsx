@@ -303,7 +303,7 @@ export default function App() {
             ) : page === "component-types" ? (
               <ComponentTypes />
             ) : page === "compositions" ? (
-              <Compositions />
+              <Compositions onBusy={setImporting} />
             ) : page === "users" ? (
               <UserManagement currentUser={profile.id} />
             ) : page === "imports" ? (

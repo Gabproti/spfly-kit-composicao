@@ -3,7 +3,36 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import type { Product, Component, CompositionItem } from "../lib/types";
 import { Empty, Modal, ProductImage, message } from "../components/UI";
-export default function Compositions() {
+import BulkComponent from "../components/BulkComponent";
+async function catalog<T>(table: "products" | "components") {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const r = await db()
+      .from(table)
+      .select("*")
+      .order("id")
+      .range(offset, offset + 999);
+    fail(r.error);
+    rows.push(...((r.data ?? []) as T[]));
+    if ((r.data?.length ?? 0) < 1000)
+      return rows.sort((a, b) =>
+        (a as { code: string }).code.localeCompare(
+          (b as { code: string }).code,
+        ),
+      );
+  }
+}
+export default function Compositions({
+  onBusy,
+}: {
+  onBusy: (busy: boolean) => void;
+}) {
+  const [bulkLocked, setBulkLocked] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    onBusy(bulkLocked);
+    return () => onBusy(false);
+  }, [bulkLocked, onBusy]);
   const [products, setProducts] = useState<Product[]>([]);
   const [components, setComponents] = useState<Component[]>([]);
   const [productId, setProductId] = useState("");
@@ -21,14 +50,12 @@ export default function Compositions() {
   }, [busy]);
   useEffect(() => {
     Promise.all([
-      db().from("products").select("*").order("code"),
-      db().from("components").select("*").order("code"),
+      catalog<Product>("products"),
+      catalog<Component>("components"),
     ])
       .then(([p, c]) => {
-        fail(p.error);
-        fail(c.error);
-        setProducts(p.data ?? []);
-        setComponents(c.data ?? []);
+        setProducts(p);
+        setComponents(c);
       })
       .catch(() => setError("Não foi possível carregar os cadastros."));
   }, []);
@@ -58,7 +85,7 @@ export default function Compositions() {
     return () => {
       live = false;
     };
-  }, [productId]);
+  }, [productId, revision]);
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (dirty) {
@@ -176,217 +203,229 @@ export default function Compositions() {
           {notice}
         </div>
       )}
-      <section className="panel composition-selector">
-        <label>
-          Selecione o produto
-          <select
-            value={productId}
-            disabled={busy}
-            onChange={(e) => {
-              if (
-                dirty &&
-                !window.confirm("Descartar as alterações ainda não salvas?")
-              )
-                return;
-              setError("");
-              setProductId(e.target.value);
-            }}
-          >
-            <option value="">Escolha um produto</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code} — {p.description}
-                {p.active ? "" : " (inativo)"}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
-      {!product ? (
-        <Empty>
-          Selecione um produto para cadastrar ou editar sua composição.
-        </Empty>
-      ) : (
-        <section className="panel">
-          <div className="composition-product">
-            <ProductImage path={product.image_url} />
-            <div>
-              <span className="eyebrow">CÓDIGO {product.code}</span>
-              <h2>{product.description}</h2>
-            </div>
-            <span className="record-count">{items.length} itens</span>
-          </div>
-          {loading ? (
-            <Empty>Carregando composição…</Empty>
-          ) : (
-            <>
-              <div className="add-item">
-                <label>
-                  Componente
-                  <select
-                    value={selected}
-                    onChange={(e) => setSelected(e.target.value)}
-                    disabled={busy}
-                  >
-                    <option value="">Selecione um componente cadastrado</option>
-                    {available.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code} — {c.type || "Sem tipo"} · {c.description}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  className="secondary"
-                  disabled={!selected || busy}
-                  onClick={add}
-                >
-                  <Plus size={20} />
-                  ADICIONAR ITEM
-                </button>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Tipo</th>
-                      <th>Código</th>
-                      <th>Descrição</th>
-                      <th>Quantidade</th>
-                      <th>Excluir vínculo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((i, index) => {
-                      const c = components.find((c) => c.id === i.component_id);
-                      return (
-                        <tr key={i.component_id}>
-                          <td>{c?.type || "Sem tipo"}</td>
-                          <td className="mono">{c?.code}</td>
-                          <td>
-                            {c?.description}
-                            {c && !c.active && (
-                              <span className="badge red">
-                                Inativo — substitua ou remova
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            <input
-                              className="quantity-input"
-                              type="number"
-                              min={1}
-                              max={9999}
-                              step={1}
-                              aria-label={`Quantidade de ${c?.description}`}
-                              value={i.quantity}
-                              disabled={busy}
-                              onChange={(e) => {
-                                setItems(
-                                  items.map((item, n) =>
-                                    n === index
-                                      ? {
-                                          ...item,
-                                          quantity: Number(e.target.value),
-                                        }
-                                      : item,
-                                  ),
-                                );
-                                setDirty(true);
-                                setNotice("");
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <button
-                              className="icon-button danger"
-                              disabled={
-                                busy ||
-                                (dirty && persisted.includes(i.component_id))
-                              }
-                              aria-label={`Excluir vínculo de ${c?.code}`}
-                              onClick={() => {
-                                setRemoving(i.component_id);
-                              }}
-                            >
-                              <Trash2 size={20} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {!items.length && (
-                  <Empty>
-                    Esta composição ainda não tem itens. Adicione os componentes
-                    acima.
-                  </Empty>
-                )}
-              </div>
-              <div className="panel-actions">
-                <small>
-                  {!items.length
-                    ? "Sem componentes, o kit não aparece na consulta."
-                    : dirty
-                      ? "Salve as alterações antes de excluir vínculos já cadastrados."
-                      : "Os componentes serão apresentados nesta ordem."}
-                </small>
-                <button
-                  className="primary"
-                  onClick={save}
-                  disabled={
-                    busy ||
-                    items.some(
-                      (i) =>
-                        !components.find((c) => c.id === i.component_id)
-                          ?.active,
-                    )
-                  }
-                >
-                  <Save size={20} />
-                  {busy ? "SALVANDO…" : "SALVAR COMPOSIÇÃO"}
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-      )}
-      {removing && (
-        <Modal title="Excluir componente da composição?" close={closeRemoval}>
-          <p>
-            Produto: <strong className="mono">{product?.code}</strong>
-          </p>
-          <p>
-            Componente:{" "}
-            <strong className="mono">
-              {components.find((item) => item.id === removing)?.code}
-            </strong>
-          </p>
-          <p>
-            Somente este vínculo será removido. O produto, o componente e os
-            demais vínculos serão preservados.
-          </p>
-          {!persisted.includes(removing) && (
-            <p>
-              Este item ainda não foi salvo; será removido apenas da edição
-              atual.
-            </p>
-          )}
-          <div className="modal-actions">
-            <button
-              className="secondary"
+      <BulkComponent
+        components={components}
+        disabled={dirty || busy || loading}
+        onLock={setBulkLocked}
+        onDone={() => setRevision((n) => n + 1)}
+      />
+      <div inert={bulkLocked}>
+        <section className="panel composition-selector">
+          <label>
+            Selecione o produto
+            <select
+              value={productId}
               disabled={busy}
-              onClick={closeRemoval}
+              onChange={(e) => {
+                if (
+                  dirty &&
+                  !window.confirm("Descartar as alterações ainda não salvas?")
+                )
+                  return;
+                setError("");
+                setProductId(e.target.value);
+              }}
             >
-              Cancelar
-            </button>
-            <button className="primary" disabled={busy} onClick={removeLink}>
-              {busy ? "Excluindo…" : "Excluir vínculo"}
-            </button>
-          </div>
-        </Modal>
-      )}
+              <option value="">Escolha um produto</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code} — {p.description}
+                  {p.active ? "" : " (inativo)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+        {!product ? (
+          <Empty>
+            Selecione um produto para cadastrar ou editar sua composição.
+          </Empty>
+        ) : (
+          <section className="panel">
+            <div className="composition-product">
+              <ProductImage path={product.image_url} />
+              <div>
+                <span className="eyebrow">CÓDIGO {product.code}</span>
+                <h2>{product.description}</h2>
+              </div>
+              <span className="record-count">{items.length} itens</span>
+            </div>
+            {loading ? (
+              <Empty>Carregando composição…</Empty>
+            ) : (
+              <>
+                <div className="add-item">
+                  <label>
+                    Componente
+                    <select
+                      value={selected}
+                      onChange={(e) => setSelected(e.target.value)}
+                      disabled={busy}
+                    >
+                      <option value="">
+                        Selecione um componente cadastrado
+                      </option>
+                      {available.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.type || "Sem tipo"} · {c.description}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="secondary"
+                    disabled={!selected || busy}
+                    onClick={add}
+                  >
+                    <Plus size={20} />
+                    ADICIONAR ITEM
+                  </button>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Código</th>
+                        <th>Descrição</th>
+                        <th>Quantidade</th>
+                        <th>Excluir vínculo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((i, index) => {
+                        const c = components.find(
+                          (c) => c.id === i.component_id,
+                        );
+                        return (
+                          <tr key={i.component_id}>
+                            <td>{c?.type || "Sem tipo"}</td>
+                            <td className="mono">{c?.code}</td>
+                            <td>
+                              {c?.description}
+                              {c && !c.active && (
+                                <span className="badge red">
+                                  Inativo — substitua ou remova
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <input
+                                className="quantity-input"
+                                type="number"
+                                min={1}
+                                max={9999}
+                                step={1}
+                                aria-label={`Quantidade de ${c?.description}`}
+                                value={i.quantity}
+                                disabled={busy}
+                                onChange={(e) => {
+                                  setItems(
+                                    items.map((item, n) =>
+                                      n === index
+                                        ? {
+                                            ...item,
+                                            quantity: Number(e.target.value),
+                                          }
+                                        : item,
+                                    ),
+                                  );
+                                  setDirty(true);
+                                  setNotice("");
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <button
+                                className="icon-button danger"
+                                disabled={
+                                  busy ||
+                                  (dirty && persisted.includes(i.component_id))
+                                }
+                                aria-label={`Excluir vínculo de ${c?.code}`}
+                                onClick={() => {
+                                  setRemoving(i.component_id);
+                                }}
+                              >
+                                <Trash2 size={20} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!items.length && (
+                    <Empty>
+                      Esta composição ainda não tem itens. Adicione os
+                      componentes acima.
+                    </Empty>
+                  )}
+                </div>
+                <div className="panel-actions">
+                  <small>
+                    {!items.length
+                      ? "Sem componentes, o kit não aparece na consulta."
+                      : dirty
+                        ? "Salve as alterações antes de excluir vínculos já cadastrados."
+                        : "Os componentes serão apresentados nesta ordem."}
+                  </small>
+                  <button
+                    className="primary"
+                    onClick={save}
+                    disabled={
+                      busy ||
+                      items.some(
+                        (i) =>
+                          !components.find((c) => c.id === i.component_id)
+                            ?.active,
+                      )
+                    }
+                  >
+                    <Save size={20} />
+                    {busy ? "SALVANDO…" : "SALVAR COMPOSIÇÃO"}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+        {removing && (
+          <Modal title="Excluir componente da composição?" close={closeRemoval}>
+            <p>
+              Produto: <strong className="mono">{product?.code}</strong>
+            </p>
+            <p>
+              Componente:{" "}
+              <strong className="mono">
+                {components.find((item) => item.id === removing)?.code}
+              </strong>
+            </p>
+            <p>
+              Somente este vínculo será removido. O produto, o componente e os
+              demais vínculos serão preservados.
+            </p>
+            {!persisted.includes(removing) && (
+              <p>
+                Este item ainda não foi salvo; será removido apenas da edição
+                atual.
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={closeRemoval}
+              >
+                Cancelar
+              </button>
+              <button className="primary" disabled={busy} onClick={removeLink}>
+                {busy ? "Excluindo…" : "Excluir vínculo"}
+              </button>
+            </div>
+          </Modal>
+        )}
+      </div>
     </>
   );
 }

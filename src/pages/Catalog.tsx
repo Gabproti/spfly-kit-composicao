@@ -23,6 +23,7 @@ type Draft = {
   type: string;
   image_url: string | null;
   active: boolean;
+  allow_bulk: boolean;
 };
 const blank: Draft = {
   code: "",
@@ -30,6 +31,7 @@ const blank: Draft = {
   type: "",
   image_url: null,
   active: true,
+  allow_bulk: false,
 };
 export default function Catalog({
   kind,
@@ -171,7 +173,11 @@ export default function Catalog({
     setFile(null);
     setDraft(
       row
-        ? { ...row, type: "type" in row ? (row.type ?? "") : "" }
+        ? {
+            ...row,
+            type: "type" in row ? (row.type ?? "") : "",
+            allow_bulk: "allow_bulk" in row ? Boolean(row.allow_bulk) : false,
+          }
         : { ...blank },
     );
   }
@@ -190,7 +196,9 @@ export default function Catalog({
         description: draft.description.trim(),
         active: draft.active,
         image_url: image,
-        ...(components ? { type: draft.type || null } : {}),
+        ...(components
+          ? { type: draft.type || null, allow_bulk: draft.allow_bulk }
+          : {}),
       };
       if (!values.code) throw new Error("Informe o código.");
       const result = draft.id
@@ -426,6 +434,26 @@ export default function Catalog({
               </label>
             </div>
             <div className="photo-editor">
+              {components && (
+                <>
+                  <label className="import-choice">
+                    <input
+                      type="checkbox"
+                      checked={draft.allow_bulk}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setDraft({ ...draft, allow_bulk: e.target.checked })
+                      }
+                    />
+                    Permitir adicionar a todos os produtos
+                  </label>
+                  <small>
+                    Habilita este componente na função em lote de Composições.
+                    Salvar esta permissão não adiciona nenhum vínculo; a
+                    aplicação exige prévia e dupla confirmação.
+                  </small>
+                </>
+              )}
               <label>
                 Foto {components ? "do componente (opcional)" : "do produto"}
               </label>
