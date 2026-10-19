@@ -244,7 +244,20 @@ Aplicar `supabase/migrations/20261019132317_bulk_component.sql` antes de publica
 - A tela impede edição concorrente local e navegação enquanto a prévia está aberta ou a execução está em andamento, e recarrega a composição selecionada depois do sucesso. Os catálogos são lidos em páginas para incluir mais de 1.000 cadastros.
 - Testes automatizados: autorização inicialmente desmarcada, dupla conferência no servidor, expiração, mudança desde a prévia, idempotência, rollback integral, preservação de quantidades/posições e inclusão explícita de inativos.
 
-### Recuperação e redefinição de senha (fluxo)
+### EAN e código de barras
+
+Publicação autorizada pelo proprietário em 19/10/2026. Aplicar `20261019183903_product_ean.sql` antes de publicar o frontend. Os testes utilizam banco PGlite simulado, sem importar dados fictícios no Supabase hospedado.
+
+- Em **Importações → EAN e código de barras**, baixar o modelo Excel e preencher as colunas **COD EAN** e **COD PRODUTO**, em qualquer ordem. Suporta XLSX (primeira aba) e CSV, até 5.000 linhas/10 MB. Colunas formatadas como texto preservam zeros; a leitura XLSX também respeita formatos numéricos explícitos como 0000000000000. Fórmulas, erros e notação científica textual são rejeitados.
+- A prévia identifica novos vínculos, já existentes, repetições, produtos ausentes e conflitos. Confirmação envia somente os novos vínculos aprovados; o servidor revalida tudo. EAN de outro produto nunca é transferido automaticamente. Um produto pode ter vários EANs, cada EAN tem um único produto. Reimportar preserva vínculos já existentes.
+- EAN/GTIN de 8, 12, 13 e 14 dígitos é validado pelo dígito verificador. O texto original é preservado; uma chave interna de 14 posições identifica representações equivalentes com zeros à esquerda. Referência: [validação GS1](https://www.gs1.org/services/how-calculate-check-digit-manually).
+- A consulta aceita código oficial ou EAN no mesmo campo. Leitores USB/Bluetooth que funcionam como teclado podem preencher o campo e enviar Enter. A interface recupera o foco e seleciona o conteúdo ao concluir, facilitando a próxima leitura. Não depende de câmera e não acessa diretamente hardware do leitor.
+- Em **Produtos**, a pesquisa também inclui EAN e os números vinculados aparecem abaixo do código oficial. Produtos são carregados em páginas para evitar corte em 1.000 registros.
+- `consult_kit` mantém as restrições de produto ativo, componentes ativos e kit com itens. Retorna o EAN utilizado e registra o código oficial no histórico. Colisões futuras entre código oficial e EAN de outro produto retornam indisponível, evitando identificar o kit incorreto.
+- A tabela product_eans tem RLS e leitura direta só para administradores. Gravação ocorre por função com perfil administrativo ativo, search_path fixo e permissão anônima revogada. Operadores continuam usando apenas a consulta autorizada. Exclusão de produto remove seus aliases em cascata; composições, fotos e códigos oficiais não são alterados pela importação de EAN.
+- Validação: 85 testes automatizados e compilação aprovados. Antes da publicação, aplicar a migração testada e verificar as permissões no ambiente hospedado. O ensaio com leitor físico e a planilha real ainda precisam ser feitos.
+
+### Recuperação e redefinição de senha
 
 - Login: Esqueci minha senha envia o link de recuperação para o e-mail informado. A resposta não confirma se a conta existe.
 - O link abre a tela Redefinir senha; a senha deve ter entre 12 e 128 caracteres e a confirmação deve coincidir. Links inválidos ou expirados não habilitam a alteração. Ao concluir, o usuário volta ao login.

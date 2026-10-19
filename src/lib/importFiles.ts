@@ -3,6 +3,7 @@ import { columns, type ImportKind } from "./importValidation";
 export async function readImportFile(
   file: File,
   kits = false,
+  preserveCodes = false,
 ): Promise<string[][]> {
   if (file.size > 10 * 1024 * 1024)
     throw new Error("O arquivo deve ter até 10 MB.");
@@ -50,6 +51,7 @@ export async function readImportFile(
         typeof cell.value === "number" &&
         !Number.isSafeInteger(cell.value) &&
         (kits ||
+          preserveCodes ||
           /codigo/.test(
             String(sheet.getRow(1).getCell(i).text)
               .normalize("NFD")
@@ -58,7 +60,9 @@ export async function readImportFile(
       )
         throw new Error(`Linha ${row.number}: formate o código como texto.`);
       values.push(
-        kits && typeof cell.value === "number" && /^0+$/.test(cell.numFmt ?? "")
+        (kits || preserveCodes) &&
+          typeof cell.value === "number" &&
+          /^0+$/.test(cell.numFmt ?? "")
           ? String(cell.value).padStart(cell.numFmt.length, "0")
           : cell.text,
       );

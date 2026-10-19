@@ -8,6 +8,7 @@ export type Profile = {
   created_at?: string;
 };
 export type Product = {
+  product_eans?: { ean: string }[];
   id: string;
   code: string;
   description: string;
@@ -21,6 +22,7 @@ export type CompositionItem = {
   component?: Component;
 };
 export type Kit = {
+  matched_ean?: string | null;
   product: Product;
   items: {
     code: string;

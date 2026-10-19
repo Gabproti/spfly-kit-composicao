@@ -40,6 +40,10 @@ export default function Consult() {
       );
     } finally {
       setBusy(false);
+      requestAnimationFrame(() => {
+        input.current?.focus();
+        input.current?.select();
+      });
     }
   }
   function reset() {
@@ -55,14 +59,17 @@ export default function Consult() {
         <div>
           <span className="eyebrow">OPERAÇÃO</span>
           <h1>Consulta de kit</h1>
-          <p>Informe o código do produto para visualizar sua composição.</p>
+          <p>
+            Digite o código do produto ou bipe o EAN para visualizar sua
+            composição.
+          </p>
         </div>
         <span className="heading-icon">
           <ScanLine size={30} />
         </span>
       </div>
       <form className="search-panel" onSubmit={consult}>
-        <label htmlFor="product-code">Código do produto</label>
+        <label htmlFor="product-code">Código do produto ou EAN</label>
         <div className="consult-search">
           <div className="code-field">
             <Search size={24} />
@@ -70,9 +77,11 @@ export default function Consult() {
               id="product-code"
               ref={input}
               value={code}
+              disabled={busy}
+              onFocus={(e) => e.currentTarget.select()}
               maxLength={80}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Digite ou informe o código"
+              placeholder="Digite o código ou bipe o código de barras"
               autoComplete="off"
               enterKeyHint="search"
             />
@@ -81,6 +90,10 @@ export default function Consult() {
             {busy ? "CONSULTANDO…" : "CONSULTAR"}
           </button>
         </div>
+        <p>
+          Leitor USB/Bluetooth em modo teclado: bipe neste campo e envie Enter
+          para consultar.
+        </p>
       </form>
       <div aria-live="polite">
         {error && (
@@ -93,7 +106,8 @@ export default function Consult() {
             <PackageSearch size={56} />
             <h2>Pronto para conferir</h2>
             <p>
-              Digite o código para ver a foto e todos os componentes do kit.
+              Digite o código do produto ou leia o EAN com o leitor de código de
+              barras.
             </p>
           </div>
         )}
@@ -128,6 +142,12 @@ export default function Consult() {
               <div className="kit-details">
                 <span className="eyebrow">PRODUTO</span>
                 <div className="product-code">{kit.product.code}</div>
+                {kit.matched_ean && (
+                  <p>
+                    Localizado pelo EAN:{" "}
+                    <strong className="mono">{kit.matched_ean}</strong>
+                  </p>
+                )}
                 <h2>{kit.product.description}</h2>
                 <div className="kit-info">
                   {kit.items.length} tipos de componentes <span>·</span>{" "}

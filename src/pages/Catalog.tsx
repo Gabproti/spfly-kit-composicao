@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Plus, Search, Pencil, ImagePlus, Trash2 } from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import { loadComponentTypes } from "../lib/componentTypes";
+import { matchesProductSearch } from "../lib/ean";
 import {
   cleanupDeletedProductImages,
   type ProductDeletePreview,
@@ -61,9 +62,18 @@ export default function Catalog({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await db().from(kind).select("*").order("code");
-      fail(error);
-      setRows(data ?? []);
+      const records: (Product | Component)[] = [];
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await db()
+          .from(kind)
+          .select(kind === "products" ? "*,product_eans(ean)" : "*")
+          .order("id")
+          .range(offset, offset + 999);
+        fail(error);
+        records.push(...((data ?? []) as unknown as (Product | Component)[]));
+        if ((data?.length ?? 0) < 1000) break;
+      }
+      setRows(records.sort((a, b) => a.code.localeCompare(b.code)));
       if (kind === "components") setComponentTypes(await loadComponentTypes());
     } catch {
       setError("Não foi possível carregar os cadastros.");
@@ -242,9 +252,7 @@ export default function Catalog({
   const visible = rows.filter(
     (r) =>
       (status === "all" || r.active === (status === "active")) &&
-      `${r.code} ${r.description}`
-        .toLocaleLowerCase("pt-BR")
-        .includes(search.toLocaleLowerCase("pt-BR")),
+      matchesProductSearch(r, search),
   );
   return (
     <>
@@ -297,7 +305,11 @@ export default function Catalog({
             <Search size={20} />
             <input
               aria-label={`Pesquisar ${noun}`}
-              placeholder="Pesquisar código ou descrição"
+              placeholder={
+                components
+                  ? "Pesquisar código ou descrição"
+                  : "Pesquisar código, EAN ou descrição"
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -334,7 +346,15 @@ export default function Catalog({
                     <td>
                       <ProductImage path={row.image_url} />
                     </td>
-                    <td className="mono">{row.code}</td>
+                    <td className="mono">
+                      {row.code}
+                      {!components && Boolean(row.product_eans?.length) && (
+                        <small>
+                          EAN:{" "}
+                          {row.product_eans!.map((item) => item.ean).join(", ")}
+                        </small>
+                      )}
+                    </td>
                     {"type" in row && <td>{row.type || "Sem tipo"}</td>}
                     <td className="description-cell">{row.description}</td>
                     <td>

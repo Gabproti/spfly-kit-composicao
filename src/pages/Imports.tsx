@@ -18,6 +18,7 @@ import {
 } from "../lib/importFiles";
 import PhotoImport from "../components/PhotoImport";
 import KitImport from "../components/KitImport";
+import EanImport from "../components/EanImport";
 type Row = CheckedRow & { existing?: Product; result?: string; done?: boolean };
 async function catalog(table: "products" | "components") {
   const rows: Product[] = [];
@@ -44,6 +45,7 @@ export default function Imports({
   const [kind, setKind] = useState<ImportKind>("products");
   const [rows, setRows] = useState<Row[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [eanBusy, setEanBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -59,16 +61,16 @@ export default function Imports({
       );
   }, []);
   useEffect(() => {
-    onBusy(busy || photoBusy);
+    onBusy(busy || photoBusy || eanBusy);
     return () => onBusy(false);
-  }, [busy, photoBusy, onBusy]);
+  }, [busy, photoBusy, eanBusy, onBusy]);
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
-      if (busy || photoBusy) event.preventDefault();
+      if (busy || photoBusy || eanBusy) event.preventDefault();
     };
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [busy, photoBusy]);
+  }, [busy, photoBusy, eanBusy]);
   async function analyze(file: File) {
     setBusy(true);
     setRows([]);
@@ -171,7 +173,7 @@ export default function Imports({
     );
   }
   const errors = rows.filter((r) => r.error).length;
-  const blocked = busy || photoBusy;
+  const blocked = busy || photoBusy || eanBusy;
   return (
     <>
       <div className="page-heading">
@@ -196,7 +198,7 @@ export default function Imports({
           {progress || "Preparando…"} Mantenha esta página aberta.
         </div>
       )}
-      <section className="panel import-panel" inert={photoBusy}>
+      <section className="panel import-panel" inert={photoBusy || eanBusy}>
         <h2>1. Planilhas de cadastros e kits</h2>
         <p>
           Importe primeiro produtos e componentes; depois as composições. Excel
@@ -351,7 +353,8 @@ export default function Imports({
           </>
         )}
       </section>
-      <PhotoImport onBusy={setPhotoBusy} disabled={busy} />
+      <EanImport onBusy={setEanBusy} disabled={busy || photoBusy} />
+      <PhotoImport onBusy={setPhotoBusy} disabled={busy || eanBusy} />
     </>
   );
 }
