@@ -36,6 +36,9 @@ export function matchesProductSearch(
   );
 }
 export type EanRow = {
+  matchedProduct?: string;
+  matchedProductId?: string;
+  ruleApplied?: string;
   line: number;
   ean: string;
   product: string;
@@ -51,7 +54,10 @@ const header = (s: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
-export function parseEanRows(matrix: string[][]): EanRow[] {
+export function parseEanRows(
+  matrix: string[][],
+  deferProductConflicts = false,
+): EanRow[] {
   if (!matrix.length) throw new Error("A planilha está vazia.");
   const names = matrix[0].map(header),
     eanColumns = names
@@ -93,7 +99,7 @@ export function parseEanRows(matrix: string[][]): EanRow[] {
         "EAN/GTIN inválido: use 8, 12, 13 ou 14 dígitos, com dígito verificador correto. Preserve zeros à esquerda.";
     else if (!r.product || r.product.length > 80)
       r.error = "COD PRODUTO é obrigatório, com até 80 caracteres.";
-    else if (codes.get(key)!.size > 1)
+    else if (!deferProductConflicts && codes.get(key)!.size > 1)
       r.error = "O mesmo EAN aparece para produtos diferentes no arquivo.";
     else if (seen.has(key)) r.status = "duplicate";
     if (key) seen.add(key);
@@ -101,6 +107,7 @@ export function parseEanRows(matrix: string[][]): EanRow[] {
   });
 }
 export const eanLabels: Record<string, string> = {
+  changed: "O produto encontrado mudou desde a prévia. Analise novamente.",
   new: "Pronto para vincular",
   inserted: "EAN vinculado",
   existing: "Já vinculado a este produto",

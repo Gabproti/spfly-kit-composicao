@@ -21,6 +21,7 @@ export default function EanImport({
     [filename, setFilename] = useState(""),
     [page, setPage] = useState(0),
     [completed, setCompleted] = useState(false);
+  const [rule, setRule] = useState<"exact" | "remove_suffix_N">("exact");
   const locked = busy || disabled,
     newCount = rows.filter((r) => !r.error && r.status === "new").length;
   useEffect(() => {
@@ -53,7 +54,11 @@ export default function EanImport({
       setBusy(false);
     }
   }
-  async function classify(checked: EanRow[], apply: boolean) {
+  async function classify(
+    checked: EanRow[],
+    apply: boolean,
+    selectedRule = rule,
+  ) {
     const eligible = checked
       .map((row, index) => ({ row, index }))
       .filter(({ row }) => !row.error && (!apply || row.status === "new"));
@@ -62,6 +67,8 @@ export default function EanImport({
       p_rows: eligible.map(({ row }) => ({
         ean: row.ean,
         product: row.product,
+        rule: selectedRule,
+        ...(apply ? { expected_product_id: row.matchedProductId } : {}),
       })),
       p_apply: apply,
     });
@@ -73,6 +80,9 @@ export default function EanImport({
         throw new Error("Resposta de importação inválida. Analise novamente.");
       result[i].status = entry.status;
       result[i].result = eanLabels[entry.status] ?? entry.status;
+      result[i].matchedProduct = entry.product_code ?? undefined;
+      result[i].matchedProductId = entry.product_id ?? undefined;
+      result[i].ruleApplied = entry.rule_applied;
     }
     return result;
   }
@@ -85,8 +95,28 @@ export default function EanImport({
     setPage(0);
     setCompleted(false);
     try {
-      const parsed = parseEanRows(await readImportFile(file, false, true));
+      const parsed = parseEanRows(
+        await readImportFile(file, false, true),
+        true,
+      );
       setRows(await classify(parsed, false));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function changeRule(selected: "exact" | "remove_suffix_N") {
+    setRule(selected);
+    setError("");
+    setNotice("");
+    setPage(0);
+    if (!rows.length) return;
+    const original = rows;
+    setRows([]);
+    setBusy(true);
+    try {
+      setRows(await classify(original, false, selected));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -125,6 +155,11 @@ export default function EanImport({
                 linha: r.line,
                 "COD EAN": r.ean,
                 "COD PRODUTO": r.product,
+                produto_encontrado: r.matchedProduct ?? "",
+                regra_aplicada:
+                  r.ruleApplied === "remove_suffix_N"
+                    ? "Remover N final"
+                    : "Exata",
                 resultado:
                   r.error ||
                   r.result ||
@@ -162,6 +197,21 @@ export default function EanImport({
         </div>
       )}
       <div className="toolbar">
+        <label>
+          Regra para COD PRODUTO
+          <select
+            value={rule}
+            disabled={locked || completed}
+            onChange={(e) =>
+              void changeRule(e.target.value as "exact" | "remove_suffix_N")
+            }
+          >
+            <option value="exact">Correspondência exata</option>
+            <option value="remove_suffix_N">
+              Remover N final do COD PRODUTO
+            </option>
+          </select>
+        </label>
         <button className="secondary" disabled={locked} onClick={template}>
           Baixar modelo EAN
         </button>
@@ -179,6 +229,11 @@ export default function EanImport({
           />
         </label>
       </div>
+      <p>
+        A busca exata sempre tem prioridade. Com a regra de N final, AN3666-51AN
+        pode encontrar AN3666-51A. A regra só remove um N maiúsculo do código da
+        planilha; não altera o EAN nem o cadastro do produto.
+      </p>
       <p>
         Colunas: <strong>COD EAN</strong> e <strong>COD PRODUTO</strong>, em
         qualquer ordem. Excel (.xlsx) ou CSV, até 5.000 linhas e 10 MB. Formate
@@ -214,6 +269,8 @@ export default function EanImport({
                   <th>Linha</th>
                   <th>COD EAN</th>
                   <th>COD PRODUTO</th>
+                  <th>Produto encontrado</th>
+                  <th>Regra aplicada</th>
                   <th>Resultado</th>
                 </tr>
               </thead>
@@ -223,6 +280,16 @@ export default function EanImport({
                     <td>{r.line}</td>
                     <td className="mono">{r.ean}</td>
                     <td className="mono">{r.product}</td>
+                    <td className="mono">{r.matchedProduct ?? "—"}</td>
+                    <td>
+                      {r.error
+                        ? "—"
+                        : r.ruleApplied === "remove_suffix_N"
+                          ? "Remover N final"
+                          : r.matchedProduct
+                            ? "Exata"
+                            : "—"}
+                    </td>
                     <td>
                       {r.error ||
                         r.result ||

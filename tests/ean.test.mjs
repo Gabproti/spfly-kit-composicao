@@ -19,6 +19,15 @@ const lib = await import(
     ).toString("base64")
 );
 const { eanKey, parseEanRows } = lib;
+test("Prévia com regra pode adiar o conflito entre variantes do produto para a resolução no servidor", () => {
+  const matrix = [
+    ["COD EAN", "COD PRODUTO"],
+    ["4006381333931", "AN3666-51A"],
+    ["4006381333931", "AN3666-51AN"],
+  ];
+  assert.ok(parseEanRows(matrix).every((r) => r.error));
+  assert.ok(parseEanRows(matrix, true).every((r) => !r.error));
+});
 test("Pesquisa administrativa encontra código, descrição, EAN com zeros e variante UPC equivalente", () => {
   const product = {
     code: "00123",

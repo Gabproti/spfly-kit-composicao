@@ -262,6 +262,163 @@ test("EAN: importação incremental, consulta por leitor e permissões", async (
         );
       },
     );
+    const makeEan = (body) => {
+      let sum = 0;
+      for (let i = body.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3)
+        sum += Number(body[i]) * w;
+      return body + String((10 - (sum % 10)) % 10);
+    };
+    await t.test(
+      "N final: quatro exemplos encontram o produto sem alterar EAN ou código oficial",
+      async () => {
+        const codes = ["AN3666-51A", "AN3700-89Z", "AN8175-55E", "AN8192-56P"];
+        for (const code of codes)
+          await pg.query("insert into products(code) values($1)", [code]);
+        const rows = codes.map((product, i) => ({
+          ean: makeEan("12345678901" + i),
+          product: product + "N",
+          rule: "remove_suffix_N",
+        }));
+        const checked = await run(rows);
+        assert.ok(
+          checked.every(
+            (r) => r.status === "new" && r.rule_applied === "remove_suffix_N",
+          ),
+        );
+        assert.deepEqual(
+          checked.map((r) => r.product_code),
+          codes,
+        );
+        const saved = await run(
+          rows.map((r, i) => ({
+            ...r,
+            expected_product_id: checked[i].product_id,
+          })),
+          true,
+        );
+        assert.ok(saved.every((r) => r.status === "inserted"));
+        assert.deepEqual(
+          (
+            await pg.query(
+              "select p.code from products p where p.code like 'AN%' order by code",
+            )
+          ).rows.map((r) => r.code),
+          [...codes].sort(),
+        );
+        for (const [i, row] of rows.entries())
+          assert.equal(
+            (
+              await pg.query(
+                "select ean from product_eans where product_id=$1",
+                [checked[i].product_id],
+              )
+            ).rows[0].ean,
+            row.ean,
+          );
+      },
+    );
+    await t.test(
+      "Exata vence a remoção do N; regra é opcional, não encadeia e não remove outro caractere",
+      async () => {
+        await pg.exec("insert into products(code) values('AN3666-51AN')");
+        const exact = await run([
+          {
+            ean: makeEan("123456789020"),
+            product: "AN3666-51AN",
+            rule: "remove_suffix_N",
+          },
+        ]);
+        assert.equal(exact[0].product_code, "AN3666-51AN");
+        assert.equal(exact[0].rule_applied, "exact");
+        for (const row of [
+          { ean: makeEan("123456789021"), product: "AN3700-89ZN" },
+          {
+            ean: makeEan("123456789022"),
+            product: "AN3700-89ZNN",
+            rule: "remove_suffix_N",
+          },
+          {
+            ean: makeEan("123456789023"),
+            product: "AN3700-89ZX",
+            rule: "remove_suffix_N",
+          },
+        ])
+          assert.equal((await run([row], true))[0].status, "product_missing");
+        assert.equal(
+          (
+            await run(
+              [
+                {
+                  ean: makeEan("123456789024"),
+                  product: "AN3700-89Z",
+                  rule: "invalid",
+                },
+              ],
+              true,
+            )
+          )[0].status,
+          "invalid",
+        );
+      },
+    );
+    await t.test(
+      "Resolução diferente desde a prévia é recusada e variantes do mesmo produto são deduplicadas",
+      async () => {
+        const input = {
+          ean: makeEan("123456789030"),
+          product: "AN3700-89ZN",
+          rule: "remove_suffix_N",
+        };
+        const checked = await run([input]);
+        await pg.exec("insert into products(code) values('AN3700-89ZN')");
+        assert.equal(
+          (
+            await run(
+              [{ ...input, expected_product_id: checked[0].product_id }],
+              true,
+            )
+          )[0].status,
+          "changed",
+        );
+        assert.equal(
+          (
+            await pg.query(
+              "select count(*)::integer n from product_eans where ean=$1",
+              [input.ean],
+            )
+          ).rows[0].n,
+          0,
+        );
+        const ean = makeEan("123456789031");
+        const same = await run(
+          [
+            { ean, product: "AN8175-55E", rule: "remove_suffix_N" },
+            { ean, product: "AN8175-55EN", rule: "remove_suffix_N" },
+          ],
+          true,
+        );
+        assert.deepEqual(
+          same.map((r) => r.status),
+          ["inserted", "duplicate"],
+        );
+        const conflicting = await run(
+          [
+            {
+              ean: makeEan("123456789032"),
+              product: "AN8175-55E",
+              rule: "remove_suffix_N",
+            },
+            {
+              ean: makeEan("123456789032"),
+              product: "AN8192-56PN",
+              rule: "remove_suffix_N",
+            },
+          ],
+          true,
+        );
+        assert.ok(conflicting.every((r) => r.status === "file_conflict"));
+      },
+    );
   } finally {
     await pg.close();
   }
