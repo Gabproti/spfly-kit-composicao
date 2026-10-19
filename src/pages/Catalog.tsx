@@ -18,6 +18,7 @@ import {
   message,
 } from "../components/UI";
 type Draft = {
+  product_eans?: { ean: string }[];
   id?: string;
   code: string;
   description: string;
@@ -414,6 +415,30 @@ export default function Catalog({
                   onChange={(e) => setDraft({ ...draft, code: e.target.value })}
                 />
               </label>
+              {!components && (
+                <label className="full">
+                  EAN / código de barras
+                  <textarea
+                    readOnly
+                    className="mono ean-codes"
+                    rows={Math.max(
+                      1,
+                      Math.min(5, draft.product_eans?.length ?? 0),
+                    )}
+                    value={(draft.product_eans ?? [])
+                      .map((item) => item.ean)
+                      .sort()
+                      .join("\n")}
+                    placeholder="Nenhum EAN vinculado"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <small>
+                    EANs vinculados pela importação. Se houver mais de um, cada
+                    número aparece em uma linha. Você pode selecionar e copiar
+                    para solicitar uma correção.
+                  </small>
+                </label>
+              )}
               {components && (
                 <label>
                   Tipo (opcional)

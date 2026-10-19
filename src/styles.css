@@ -19,7 +19,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button {
@@ -31,7 +32,8 @@ button:disabled {
 }
 button,
 input,
-select {
+select,
+textarea {
   transition:
     border-color 0.15s,
     background 0.15s,
@@ -39,7 +41,8 @@ select {
 }
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid #f9b789;
   outline-offset: 3px;
 }
@@ -74,7 +77,8 @@ label {
   margin: 0 0 18px;
 }
 input,
-select {
+select,
+textarea {
   background: white;
   border: 1px solid #dfe1e7;
   padding: 13px 15px;
@@ -419,6 +423,10 @@ tr:last-child td {
   font-family: ui-monospace, monospace;
   font-weight: 700;
   white-space: nowrap;
+}
+.ean-codes {
+  white-space: pre;
+  resize: vertical;
 }
 .row-actions {
   display: flex;
