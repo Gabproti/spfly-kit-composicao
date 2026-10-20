@@ -47,6 +47,7 @@ export default function Catalog({
   const [rows, setRows] = useState<(Product | Component)[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [eanFilter, setEanFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -85,6 +86,7 @@ export default function Catalog({
   useEffect(() => {
     setSearch("");
     setStatus("all");
+    setEanFilter("all");
     setError("");
     setNotice("");
     void load();
@@ -253,6 +255,9 @@ export default function Catalog({
   const visible = rows.filter(
     (r) =>
       (status === "all" || r.active === (status === "active")) &&
+      (components ||
+        eanFilter === "all" ||
+        (eanFilter === "with") === Boolean(r.product_eans?.length)) &&
       matchesProductSearch(r, search),
   );
   return (
@@ -324,6 +329,17 @@ export default function Catalog({
             <option value="active">Ativos</option>
             <option value="inactive">Inativos</option>
           </select>
+          {!components && (
+            <select
+              aria-label="Filtrar por código EAN"
+              value={eanFilter}
+              onChange={(e) => setEanFilter(e.target.value)}
+            >
+              <option value="all">EAN: todos</option>
+              <option value="with">Com código EAN</option>
+              <option value="without">Sem código EAN</option>
+            </select>
+          )}
           <span className="record-count">{visible.length} registros</span>
         </div>
         {loading ? (
