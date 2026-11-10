@@ -368,6 +368,16 @@ footer {
   gap: 14px;
   border-bottom: 1px solid var(--border);
 }
+.catalog-toolbar {
+  flex-wrap: wrap;
+}
+.catalog-toolbar .filter-field {
+  flex-basis: 240px;
+}
+.catalog-export-hint {
+  margin: 14px 24px;
+  font-size: 0.85rem;
+}
 .filter-field {
   display: flex;
   align-items: center;

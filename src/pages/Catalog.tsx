@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Plus, Search, Pencil, ImagePlus, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Pencil,
+  ImagePlus,
+  Trash2,
+  Download,
+} from "lucide-react";
 import { db, fail } from "../lib/supabase";
 import { loadComponentTypes } from "../lib/componentTypes";
 import { matchesProductSearch } from "../lib/ean";
+import { createProductExport } from "../lib/productExport";
+import { downloadFile } from "../lib/importFiles";
 import {
   cleanupDeletedProductImages,
   type ProductDeletePreview,
@@ -48,6 +57,7 @@ export default function Catalog({
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [eanFilter, setEanFilter] = useState("all");
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -260,6 +270,33 @@ export default function Catalog({
         (eanFilter === "with") === Boolean(r.product_eans?.length)) &&
       matchesProductSearch(r, search),
   );
+  async function exportProducts() {
+    if (components || loading || exporting || !visible.length) return;
+    const selected = visible.map((product) => ({
+      ...product,
+      product_eans: product.product_eans?.map((item) => ({ ...item })),
+    }));
+    const suffix =
+      eanFilter === "with"
+        ? "com-ean"
+        : eanFilter === "without"
+          ? "sem-ean"
+          : "todos";
+    setExporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const blob = await createProductExport(selected);
+      downloadFile(`produtos-${suffix}.xlsx`, blob);
+      setNotice(
+        `Planilha gerada com ${selected.length} produtos, conforme os filtros selecionados.`,
+      );
+    } catch {
+      setError("Não foi possível gerar a planilha. Tente novamente.");
+    } finally {
+      setExporting(false);
+    }
+  }
   return (
     <>
       <div className="page-heading">
@@ -306,7 +343,7 @@ export default function Catalog({
             </button>
           </div>
         )}
-        <div className="toolbar">
+        <div className="toolbar catalog-toolbar">
           <div className="filter-field">
             <Search size={20} />
             <input
@@ -341,7 +378,23 @@ export default function Catalog({
             </select>
           )}
           <span className="record-count">{visible.length} registros</span>
+          {!components && (
+            <button
+              className="secondary"
+              disabled={loading || exporting || !visible.length}
+              onClick={exportProducts}
+            >
+              <Download size={18} />
+              {exporting ? "Gerando planilha…" : "Exportar Excel"}
+            </button>
+          )}
         </div>
+        {!components && (
+          <p className="catalog-export-hint">
+            Exportar Excel baixa os produtos da lista, respeitando a pesquisa e
+            os filtros de status e EAN.
+          </p>
+        )}
         {loading ? (
           <Empty>Carregando…</Empty>
         ) : (
